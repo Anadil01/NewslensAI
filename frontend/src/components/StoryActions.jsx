@@ -9,11 +9,15 @@ import {
 } from "../hooks/useStoryInteractions";
 
 /*
- * Personalization controls for one story: like / dislike, bookmark and
- * "show less like this". Every endpoint behind these buttons is protected,
- * so nothing renders (and no request fires) without a signed-in user.
+ * Personalization controls for one story.
+ *
+ * Normal mode:
+ *   Used in story/detail surfaces.
+ *
+ * Compact mode:
+ *   Used inside the StoryCard "More" menu.
  */
-function StoryActions({ storyId }) {
+function StoryActions({ storyId, compact = false, onAction }) {
   const { user } = useAuth();
 
   const isSignedIn = Boolean(user);
@@ -30,25 +34,99 @@ function StoryActions({ storyId }) {
 
   const toggleSkip = useToggleStorySkip(storyId);
 
-  const { data: bookmarkedStories = [] } = useBookmarks();
+  const { data: bookmarkedStories = [] } = useBookmarks({
+    enabled: isSignedIn,
+  });
+
   const toggleBookmark = useToggleBookmark();
 
   const isBookmarked = bookmarkedStories.some(
-    (bookmarkedStory) => bookmarkedStory.id === storyId
+    (bookmarkedStory) =>
+      bookmarkedStory.id === storyId ||
+      bookmarkedStory.storyId === storyId ||
+      bookmarkedStory.story?.id === storyId
   );
 
   if (!isSignedIn) {
     return null;
   }
 
-  // Pressing the active choice again clears it, so the hook receives null.
   const applyFeedback = (value) => {
-    setFeedback.mutate(feedback === value ? null : value);
+    setFeedback.mutate(
+      feedback === value ? null : value,
+      {
+        onSuccess: () => {
+          onAction?.();
+        },
+      }
+    );
   };
+
+  const handleBookmark = () => {
+    toggleBookmark.mutate(storyId, {
+      onSuccess: () => {
+        onAction?.();
+      },
+    });
+  };
+
+  const handleSkip = () => {
+    toggleSkip.mutate(!isSkipped, {
+      onSuccess: () => {
+        onAction?.();
+      },
+    });
+  };
+
+  if (compact) {
+    return (
+      <div className="space-y-1">
+        <MenuButton
+          onClick={() => applyFeedback("LIKE")}
+          disabled={setFeedback.isPending}
+          active={feedback === "LIKE"}
+        >
+          <ThumbUpIcon />
+          <span>More like this</span>
+        </MenuButton>
+
+        <MenuButton
+          onClick={() => applyFeedback("DISLIKE")}
+          disabled={setFeedback.isPending}
+          active={feedback === "DISLIKE"}
+        >
+          <ThumbDownIcon />
+          <span>Less like this</span>
+        </MenuButton>
+
+        <div className="my-2 border-t border-stroke" />
+
+        <MenuButton
+          onClick={handleBookmark}
+          disabled={toggleBookmark.isPending}
+          active={isBookmarked}
+        >
+          <BookmarkIcon filled={isBookmarked} />
+          <span>{isBookmarked ? "Remove from saved" : "Save story"}</span>
+        </MenuButton>
+
+        <MenuButton
+          onClick={handleSkip}
+          disabled={toggleSkip.isPending}
+          active={Boolean(isSkipped)}
+        >
+          <SkipIcon />
+          <span>
+            {isSkipped ? "Show in feed again" : "Hide from feed"}
+          </span>
+        </MenuButton>
+      </div>
+    );
+  }
 
   return (
     <div className="flex flex-wrap items-center gap-3">
-      <p className="mr-1 text-xs font-bold uppercase tracking-[0.16em] text-slate-400">
+      <p className="mr-1 text-xs font-bold uppercase tracking-[0.16em] text-muted">
         Tune your feed
       </p>
 
@@ -73,7 +151,7 @@ function StoryActions({ storyId }) {
       </ActionButton>
 
       <ActionButton
-        onClick={() => toggleBookmark.mutate(storyId)}
+        onClick={handleBookmark}
         disabled={toggleBookmark.isPending}
         active={isBookmarked}
         aria-pressed={isBookmarked}
@@ -83,7 +161,7 @@ function StoryActions({ storyId }) {
       </ActionButton>
 
       <ActionButton
-        onClick={() => toggleSkip.mutate(!isSkipped)}
+        onClick={handleSkip}
         disabled={toggleSkip.isPending}
         active={Boolean(isSkipped)}
         aria-pressed={Boolean(isSkipped)}
@@ -95,15 +173,41 @@ function StoryActions({ storyId }) {
   );
 }
 
-function ActionButton({ children, active, ...props }) {
+function ActionButton({
+  children,
+  active,
+  ...props
+}) {
   return (
     <button
       type="button"
       className={[
         "inline-flex items-center gap-2 rounded-full border px-4 py-2.5 text-sm font-semibold transition disabled:cursor-not-allowed disabled:opacity-60",
         active
-          ? "border-amber-300 bg-amber-50 text-amber-700 dark:border-amber-500/30 dark:bg-amber-500/10 dark:text-amber-300"
-          : "border-stroke bg-white text-slate-600 hover:border-amber-300 hover:bg-amber-50 hover:text-amber-700 dark:border-white/10 dark:bg-slate-900 dark:text-slate-300 dark:hover:bg-slate-800",
+          ? "border-signal/30 bg-signal/10 text-signal"
+          : "border-stroke bg-card text-muted hover:border-signal/30 hover:bg-shell hover:text-ink",
+      ].join(" ")}
+      {...props}
+    >
+      {children}
+    </button>
+  );
+}
+
+function MenuButton({
+  children,
+  active,
+  ...props
+}) {
+  return (
+    <button
+      type="button"
+      className={[
+        "flex w-full items-center gap-3 rounded-xl px-3 py-2.5 text-left text-sm font-semibold transition",
+        "disabled:cursor-not-allowed disabled:opacity-50",
+        active
+          ? "bg-signal/10 text-signal"
+          : "text-ink hover:bg-shell",
       ].join(" ")}
       {...props}
     >
@@ -123,7 +227,7 @@ function ThumbUpIcon() {
       fill="none"
       stroke="currentColor"
       strokeWidth="1.8"
-      className="h-4 w-4"
+      className="h-4 w-4 shrink-0"
       aria-hidden="true"
     >
       <path d="M7 11v9H4a1 1 0 0 1-1-1v-7a1 1 0 0 1 1-1h3Z" />
@@ -139,7 +243,7 @@ function ThumbDownIcon() {
       fill="none"
       stroke="currentColor"
       strokeWidth="1.8"
-      className="h-4 w-4"
+      className="h-4 w-4 shrink-0"
       aria-hidden="true"
     >
       <path d="M7 13V4H4a1 1 0 0 0-1 1v7a1 1 0 0 0 1 1h3Z" />
@@ -155,7 +259,7 @@ function BookmarkIcon({ filled }) {
       fill={filled ? "currentColor" : "none"}
       stroke="currentColor"
       strokeWidth="1.8"
-      className="h-4 w-4"
+      className="h-4 w-4 shrink-0"
       aria-hidden="true"
     >
       <path d="M6 4h12v16l-6-4-6 4V4Z" />
@@ -170,7 +274,7 @@ function SkipIcon() {
       fill="none"
       stroke="currentColor"
       strokeWidth="1.8"
-      className="h-4 w-4"
+      className="h-4 w-4 shrink-0"
       aria-hidden="true"
     >
       <circle cx="12" cy="12" r="9" />

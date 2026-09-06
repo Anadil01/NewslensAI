@@ -737,3 +737,40 @@ Phase 5 — Language
 → English / Hindi / Hinglish-style explanations
 Phase 6 — Audio
 → 30–60 second news briefings
+
+
+
+┌─────────────────────────────────────────────┐
+│ Search...                    ◐  Anadil  ••• │
+├────────────┬────────────────────────────────┤
+│            │                                │
+│ NewsLensAI │  FOR YOU                       │
+│            │  Your briefing                 │
+│ Home       │                                │
+│ For You    │  For You   Latest   Trending   │
+│ Latest     │                                │
+│ Trending   │                                │
+│            │  ┌──────────────────────────┐  │
+│ EXPLORE    │  │                          │  │
+│ Topics     │  │       STORY IMAGE        │  │
+│ Sources    │  │                          │  │
+│            │  ├──────────────────────────┤  │
+│ YOUR NEWS  │  │ TECHNOLOGY • 2h           │  │
+│ Saved      │  │                            │  │
+│            │  │ OpenAI announces ...      │  │
+│ Settings   │  │                            │  │
+│            │  │ AI BRIEF                   │  │
+│            │  │ A short explanation of    │  │
+│            │  │ what happened and why...  │  │
+│            │  │                            │  │
+│            │  │ • Key point               │  │
+│            │  │ • Key point               │  │
+│            │  │                            │  │
+│            │  │ 6 sources · 3 min read    │  │
+│            │  │                            │  │
+│            │  │ ♡  Save  Share  •••       │  │
+│            │  │             Understand →   │  │
+│            │  └──────────────────────────┘  │
+│            │                                │
+│            │  next story...                 │
+└────────────┴────────────────────────────────┘

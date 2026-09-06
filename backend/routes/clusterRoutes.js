@@ -16,6 +16,8 @@ router.get(
   controller.getClusters
 );
 
+
+
 router.get(
   "/clusters/:id",
   validate(clusterIdParamsSchema, "params"),

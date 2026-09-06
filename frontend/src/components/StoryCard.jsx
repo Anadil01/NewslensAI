@@ -4,198 +4,321 @@ import {
   BookmarkCheck,
   Clock3,
   Globe2,
+  MoreHorizontal,
   Share2,
   Sparkles,
-  ThumbsDown,
-  ThumbsUp,
 } from "lucide-react";
+
 import { useAuth } from "../context/useAuth";
 import { useBookmarks } from "../hooks/useBookmarks";
-import {
-  useSetStoryFeedback,
-  useStoryFeedback,
-} from "../hooks/useStoryInteractions";
 import { useToggleBookmark } from "../hooks/useToggleBookmark";
+import {
+  useStoryFeedback,
+  useSetStoryFeedback,
+  useStorySkip,
+  useToggleStorySkip,
+} from "../hooks/useStoryInteractions";
 
-function formatRelativeTime(date) {
+function getDate(story) {
+  return story?.publishedAt || story?.createdAt || null;
+}
+
+function relativeTime(date) {
   if (!date) return "Recently";
 
-  const parsedDate = new Date(date);
+  const timestamp = new Date(date).getTime();
 
-  if (Number.isNaN(parsedDate.getTime())) {
+  if (Number.isNaN(timestamp)) {
     return "Recently";
   }
 
-  const diff = Date.now() - parsedDate.getTime();
+  const diff = Math.max(0, Date.now() - timestamp);
+  const minutes = Math.floor(diff / 60000);
 
-  if (diff < 0) return "Just now";
+  if (minutes < 1) return "Just now";
 
-  const seconds = Math.floor(diff / 1000);
-  const minutes = Math.floor(seconds / 60);
+  if (minutes < 60) {
+    return `${minutes}m ago`;
+  }
+
   const hours = Math.floor(minutes / 60);
+
+  if (hours < 24) {
+    return `${hours}h ago`;
+  }
+
   const days = Math.floor(hours / 24);
 
-  if (seconds < 60) return "Just now";
-  if (minutes < 60) return `${minutes}m ago`;
-  if (hours < 24) return `${hours}h ago`;
-  if (days < 7) return `${days}d ago`;
+  if (days < 7) {
+    return `${days}d ago`;
+  }
 
-  return parsedDate.toLocaleDateString(undefined, {
-    month: "short",
+  return new Intl.DateTimeFormat("en-IN", {
     day: "numeric",
-  });
+    month: "short",
+  }).format(new Date(date));
 }
 
-function estimateReadingTime(text) {
-  if (!text) return 1;
+function formatDate(date) {
+  if (!date) return "Recently";
 
-  const words = String(text)
-    .trim()
-    .split(/\s+/)
-    .filter(Boolean).length;
+  const parsed = new Date(date);
 
-  return Math.max(1, Math.ceil(words / 220));
+  if (Number.isNaN(parsed.getTime())) {
+    return "Recently";
+  }
+
+  return new Intl.DateTimeFormat("en-IN", {
+    day: "numeric",
+    month: "short",
+  }).format(parsed);
+}
+
+function getSourceName(story) {
+  return (
+    story?.source?.name ||
+    story?.source?.title ||
+    "News source"
+  );
 }
 
 function getTopicName(story) {
   return (
-    story?.topic?.name ||
-    story?.topicName ||
     story?.storyTopics?.[0]?.topic?.name ||
+    story?.topic?.name ||
     "News"
   );
 }
 
-function getSourceName(story) {
-  return story?.source?.name || story?.sourceName || "Unknown source";
-}
-
-function getDescription(story) {
-  return (
-    story?.aiSummaries?.[0]?.summary ||
-    story?.aiSummary?.summary ||
-    story?.excerpt ||
-    story?.summary ||
-    story?.description ||
-    "Open this story to understand what happened."
-  );
-}
-
 function getSourceCount(story) {
-  if (Array.isArray(story?.cluster?.stories)) {
-    return story.cluster.stories.length;
-  }
-
-  if (Array.isArray(story?.cluster?.sources)) {
-    return story.cluster.sources.length;
-  }
-
-  if (typeof story?.sourceCount === "number") {
-    return story.sourceCount;
-  }
-
-  return null;
+  return story?.coverageCount || 1;
 }
 
-function getImageUrl(story) {
-  return (
-    story?.imageUrl ||
-    story?.image ||
-    story?.thumbnail ||
-    story?.thumbnailUrl ||
-    story?.image_url ||
-    null
-  );
-}
+function getReadingTime(story) {
+  const text =
+    story?.content ||
+    story?.excerpt ||
+    story?.title ||
+    "";
 
-function getSourceInitials(source) {
-  if (!source) return "NL";
-
-  return source
-    .split(" ")
+  const words = text
+    .trim()
+    .split(/\s+/)
     .filter(Boolean)
-    .slice(0, 2)
-    .map((word) => word[0])
-    .join("")
-    .toUpperCase();
+    .length;
+
+  return Math.max(1, Math.ceil(words / 220));
 }
 
-async function shareStory(story) {
-  const url = `${window.location.origin}/story/${story.id}`;
+/*
+ * Used only when the backend doesn't have AI key points yet.
+ *
+ * This is NOT presented as AI-generated information.
+ * It simply extracts short sentences from available article text.
+ */
+function buildFallbackKeyPoints(story) {
+  const text =
+    story?.excerpt ||
+    story?.content ||
+    "";
 
-  if (navigator.share) {
-    try {
-      await navigator.share({
-        title: story.title,
-        text: getDescription(story),
-        url,
-      });
-    } catch {
-      // User cancelled the native share dialog.
+  if (!text) {
+    return [];
+  }
+
+  const sentences = text
+    .replace(/\s+/g, " ")
+    .split(/(?<=[.!?])\s+/)
+    .map((sentence) => sentence.trim())
+    .filter((sentence) => sentence.length > 35);
+
+  return sentences.slice(0, 3);
+}
+
+function buildFallbackBrief(story) {
+  if (story?.excerpt) {
+    return story.excerpt;
+  }
+
+  if (story?.content) {
+    const clean = story.content
+      .replace(/\s+/g, " ")
+      .trim();
+
+    if (clean.length > 260) {
+      return `${clean.slice(0, 257)}...`;
     }
 
-    return;
+    return clean;
   }
 
-  try {
-    await navigator.clipboard.writeText(url);
-  } catch {
-    // Clipboard may be unavailable in some browsers.
-  }
+  return "NewsLensAI is still preparing a concise briefing for this story.";
 }
 
-export default function StoryCard({ story }) {
+function FallbackVisual({ story }) {
+  return (
+    <div className="relative h-full w-full overflow-hidden bg-gradient-to-br from-amber-50 via-slate-100 to-teal-50 dark:from-slate-800 dark:via-slate-900 dark:to-slate-800">
+
+      <div className="absolute -right-16 -top-20 h-64 w-64 rounded-full border border-amber-500/10" />
+
+      <div className="absolute right-8 top-12 h-44 w-44 rounded-full border border-amber-500/10" />
+
+      <div className="absolute -bottom-24 -left-16 h-64 w-64 rounded-full border border-teal-500/10" />
+
+      <div className="absolute inset-0 flex items-center justify-center">
+        <div className="text-center">
+
+          <div className="mx-auto flex h-14 w-14 items-center justify-center rounded-2xl border border-white/80 bg-white/80 shadow-sm backdrop-blur dark:border-white/10 dark:bg-slate-800/80">
+            <Globe2 className="h-6 w-6 text-signal" />
+          </div>
+
+          <p className="mt-3 text-[10px] font-bold uppercase tracking-[0.2em] text-signal">
+            {getTopicName(story)}
+          </p>
+
+          <p className="mt-1 text-xs font-semibold text-slate-500 dark:text-slate-400">
+            NewsLensAI briefing
+          </p>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function StoryImage({ story }) {
+  if (!story?.imageUrl) {
+    return <FallbackVisual story={story} />;
+  }
+
+  return (
+    <img
+      src={story.imageUrl}
+      alt=""
+      loading="lazy"
+      className="h-full w-full object-cover transition duration-500 group-hover:scale-[1.02]"
+    />
+  );
+}
+
+function ActionButton({
+  children,
+  onClick,
+  active = false,
+  label,
+}) {
+  return (
+    <button
+      type="button"
+      aria-label={label}
+      onClick={(event) => {
+        event.preventDefault();
+        event.stopPropagation();
+        onClick?.();
+      }}
+      className={[
+        "inline-flex h-9 items-center gap-2 rounded-xl px-3 text-xs font-semibold transition",
+        active
+          ? "bg-signal/10 text-signal"
+          : "text-slate-500 hover:bg-shell hover:text-slate-900 dark:text-slate-400 dark:hover:text-white",
+      ].join(" ")}
+    >
+      {children}
+    </button>
+  );
+}
+
+function StoryCard({ story }) {
   const { user } = useAuth();
 
   const isSignedIn = Boolean(user);
 
-  const { data: bookmarkedStories = [] } = useBookmarks();
-
-  const toggleBookmark = useToggleBookmark();
   const { data: feedback } = useStoryFeedback(story.id, {
     enabled: isSignedIn,
   });
+
   const setFeedback = useSetStoryFeedback(story.id);
 
+  const { data: isSkipped } = useStorySkip(story.id, {
+    enabled: isSignedIn,
+  });
+
+  const toggleSkip = useToggleStorySkip(story.id);
+
+  const { data: bookmarkedStories = [] } = useBookmarks({
+    enabled: isSignedIn,
+  });
+
+  const toggleBookmark = useToggleBookmark();
+
+  const aiSummary = story?.aiSummaries?.[0];
+
   const isBookmarked = bookmarkedStories.some(
-    (bookmarkedStory) => bookmarkedStory.id === story.id
+    (bookmark) =>
+      bookmark.id === story.id ||
+      bookmark.storyId === story.id ||
+      bookmark.story?.id === story.id
   );
 
   const topic = getTopicName(story);
   const source = getSourceName(story);
-  const description = getDescription(story);
-  const imageUrl = getImageUrl(story);
+  const date = getDate(story);
+
   const sourceCount = getSourceCount(story);
+  const minutesToRead = getReadingTime(story);
 
-  const readingTime = estimateReadingTime(
-    story?.content || story?.excerpt || description
-  );
+  const brief = aiSummary?.summary || buildFallbackBrief(story);
 
-  const storyUrl = `/story/${story.id}`;
+  const aiKeyPoints = Array.isArray(aiSummary?.keyPoints)
+    ? aiSummary.keyPoints.filter(Boolean).slice(0, 3)
+    : [];
 
-  const handleBookmark = (event) => {
-    event.preventDefault();
-    event.stopPropagation();
+  const fallbackKeyPoints = buildFallbackKeyPoints(story);
 
+  const keyPoints =
+    aiKeyPoints.length > 0
+      ? aiKeyPoints
+      : fallbackKeyPoints;
+
+  const handleFeedback = (value) => {
     if (!isSignedIn) return;
 
-    toggleBookmark.mutate(story.id);
+    setFeedback.mutate(
+      feedback === value ? null : value
+    );
   };
 
-  const handleShare = async (event) => {
-    event.preventDefault();
-    event.stopPropagation();
-
-    await shareStory(story);
-  };
-
-  const handleFeedback = (event, value) => {
-    event.preventDefault();
-    event.stopPropagation();
-
+  const handleBookmark = () => {
     if (!isSignedIn) return;
 
-    setFeedback.mutate(feedback === value ? null : value);
+    toggleBookmark.mutate({
+      storyId: story.id,
+      isBookmarked,
+    });
+  };
+
+  const handleSkip = () => {
+    if (!isSignedIn) return;
+
+    toggleSkip.mutate();
+  };
+
+  const handleShare = async () => {
+    const url = `${window.location.origin}/stories/${story.id}`;
+
+    try {
+      if (navigator.share) {
+        await navigator.share({
+          title: story.title,
+          url,
+        });
+
+        return;
+      }
+
+      await navigator.clipboard?.writeText(url);
+    } catch {
+      // User cancelled native sharing.
+    }
   };
 
   return (
@@ -203,509 +326,276 @@ export default function StoryCard({ story }) {
       className="
         group
         overflow-hidden
-        rounded-[26px]
+        rounded-[28px]
         border
-        border-slate-200/80
-        bg-white
-        shadow-[0_8px_30px_rgba(15,23,42,0.05)]
-        transition-all
-        duration-300
-        hover:-translate-y-1
-        hover:shadow-[0_20px_50px_rgba(15,23,42,0.10)]
-        dark:border-white/[0.08]
-        dark:bg-slate-900
+        border-stroke
+        bg-card
+        shadow-[0_14px_45px_rgba(15,23,42,0.08)]
       "
     >
-      {/* =========================================================
-          VISUAL
-      ========================================================= */}
 
-      <Link
-        to={storyUrl}
-        className="
-          relative
-          block
-          aspect-[16/10]
-          w-full
-          overflow-hidden
-          bg-slate-100
-          dark:bg-slate-800
-        "
-      >
-        {imageUrl ? (
-          <img
-            src={imageUrl}
-            alt=""
-            loading="lazy"
-            className="
-              h-full
-              w-full
-              object-cover
-              transition-transform
-              duration-700
-              ease-out
-              group-hover:scale-[1.04]
-            "
-            onError={(event) => {
-              event.currentTarget.style.display = "none";
-              event.currentTarget.nextElementSibling?.classList.remove(
-                "hidden"
-              );
-            }}
-          />
-        ) : null}
+      {/* ─────────────────────────────
+          IMAGE
+      ───────────────────────────── */}
 
-        {/* Image fallback */}
-        <div
-          className={[
-            "absolute inset-0 flex items-center justify-center overflow-hidden",
-            imageUrl ? "hidden" : "",
-          ].join(" ")}
-        >
-          <div
-            className="
-              absolute
-              inset-0
-              bg-[radial-gradient(circle_at_top_right,rgba(20,184,166,0.22),transparent_35%),radial-gradient(circle_at_bottom_left,rgba(245,158,11,0.20),transparent_40%)]
-              dark:bg-[radial-gradient(circle_at_top_right,rgba(45,212,191,0.14),transparent_35%),radial-gradient(circle_at_bottom_left,rgba(251,191,36,0.12),transparent_40%)]
-            "
-          />
+      <div className="relative h-[30vh] min-h-[220px] max-h-[300px] overflow-hidden sm:h-[32vh]">
 
-          <div
-            className="
-              relative
-              flex
-              h-20
-              w-20
-              items-center
-              justify-center
-              rounded-3xl
-              border
-              border-white/70
-              bg-white/75
-              text-lg
-              font-black
-              text-slate-700
-              shadow-lg
-              backdrop-blur
-              dark:border-white/10
-              dark:bg-white/10
-              dark:text-white
-            "
-          >
-            {getSourceInitials(source)}
-          </div>
+        <StoryImage story={story} />
 
-          <div
-            className="
-              absolute
-              bottom-5
-              flex
-              items-center
-              gap-1.5
-              rounded-full
-              border
-              border-white/60
-              bg-white/70
-              px-3
-              py-1.5
-              text-[10px]
-              font-bold
-              tracking-wide
-              text-slate-700
-              shadow-sm
-              backdrop-blur
-              dark:border-white/10
-              dark:bg-slate-950/60
-              dark:text-slate-200
-            "
-          >
-            <Sparkles size={12} />
-            NewsLensAI
-          </div>
+        <div className="pointer-events-none absolute inset-0 bg-gradient-to-b from-black/25 via-transparent to-black/15" />
+
+        {/* Story type */}
+        <div className="absolute left-4 top-4">
+          <span className="rounded-full bg-black/55 px-3 py-1.5 text-[10px] font-bold uppercase tracking-[0.16em] text-white backdrop-blur">
+            News
+          </span>
         </div>
 
-        {/* Image readability gradient */}
-        <div
-          className="
-            pointer-events-none
-            absolute
-            inset-x-0
-            bottom-0
-            h-24
-            bg-gradient-to-t
-            from-black/45
-            to-transparent
-          "
-        />
+        {/* Time */}
+        <div className="absolute right-4 top-4">
+          <span className="rounded-full bg-black/55 px-3 py-1.5 text-xs font-semibold text-white backdrop-blur">
+            {date ? relativeTime(date) : "Recently"}
+          </span>
+        </div>
+      </div>
 
-        {/* Topic */}
-        <div className="absolute left-4 top-4">
-          <span
-            className="
-              inline-flex
-              items-center
-              rounded-full
-              border
-              border-white/50
-              bg-white/90
-              px-3
-              py-1.5
-              text-[10px]
-              font-extrabold
-              uppercase
-              tracking-[0.14em]
-              text-slate-800
-              shadow-sm
-              backdrop-blur
-              dark:border-white/10
-              dark:bg-slate-950/80
-              dark:text-white
-            "
-          >
+      {/* ─────────────────────────────
+          CONTENT
+      ───────────────────────────── */}
+
+      <div className="px-5 pb-5 pt-5 sm:px-6 sm:pb-6">
+
+        {/* Source / topic / date */}
+
+        <div className="flex flex-wrap items-center gap-2 text-[10px] font-bold uppercase tracking-[0.14em]">
+
+          <span className="text-signal">
             {topic}
           </span>
-        </div>
 
-        {/* Freshness */}
-        <div className="absolute right-4 top-4">
-          <span
-            className="
-              inline-flex
-              items-center
-              rounded-full
-              bg-black/65
-              px-3
-              py-1.5
-              text-[10px]
-              font-bold
-              text-white
-              backdrop-blur
-            "
-          >
-            {formatRelativeTime(story?.publishedAt)}
+          <span className="text-slate-300 dark:text-slate-600">
+            •
           </span>
-        </div>
 
-        {/* Multi-source coverage */}
-        {sourceCount && sourceCount > 1 ? (
-          <div className="absolute bottom-4 right-4">
-            <span
-              className="
-                inline-flex
-                items-center
-                gap-1.5
-                rounded-full
-                bg-black/70
-                px-3
-                py-1.5
-                text-[10px]
-                font-bold
-                text-white
-                backdrop-blur
-              "
-            >
-              <Globe2 size={12} />
-              {sourceCount} sources
-            </span>
-          </div>
-        ) : null}
-      </Link>
-
-      {/* =========================================================
-          CONTENT
-      ========================================================= */}
-
-      <div className="p-5 sm:p-6">
-        {/* Source */}
-        <div
-          className="
-            flex
-            items-center
-            gap-2
-            text-xs
-            font-semibold
-            text-slate-500
-            dark:text-slate-400
-          "
-        >
-          <span
-            className="
-              max-w-[70%]
-              truncate
-              uppercase
-              tracking-[0.08em]
-              text-slate-700
-              dark:text-slate-200
-            "
-          >
+          <span className="text-slate-500 dark:text-slate-400">
             {source}
           </span>
 
-          <span
-            className="
-              h-1
-              w-1
-              shrink-0
-              rounded-full
-              bg-slate-300
-              dark:bg-slate-600
-            "
-          />
+          {date && (
+            <>
+              <span className="text-slate-300 dark:text-slate-600">
+                •
+              </span>
 
-          <span className="shrink-0">
-            {formatRelativeTime(story?.publishedAt)}
-          </span>
+              <span className="text-slate-400 dark:text-slate-500">
+                {formatDate(date)}
+              </span>
+            </>
+          )}
         </div>
 
         {/* Headline */}
-        <Link to={storyUrl} className="block">
-          <h2
-            className="
-              mt-3
-              line-clamp-2
-              text-xl
-              font-extrabold
-              leading-[1.2]
-              tracking-[-0.025em]
-              text-slate-950
-              transition-colors
-              group-hover:text-amber-700
-              dark:text-white
-              dark:group-hover:text-amber-400
-              sm:text-[22px]
-            "
-          >
-            {story.title}
-          </h2>
-        </Link>
 
-        {/* AI Brief */}
-        <div
-          className="
-            mt-4
-            rounded-2xl
-            border
-            border-slate-200/70
-            bg-slate-50
-            p-4
-            dark:border-white/[0.06]
-            dark:bg-slate-800/60
-          "
-        >
-          <div
-            className="
-              mb-2
-              flex
-              items-center
-              gap-2
-              text-[10px]
-              font-extrabold
-              uppercase
-              tracking-[0.16em]
-              text-teal-700
-              dark:text-teal-300
-            "
-          >
-            <Sparkles size={13} />
+        <h2 className="mt-3 text-[24px] font-extrabold leading-[1.16] tracking-[-0.03em] text-ink sm:text-[28px]">
+          {story.title}
+        </h2>
 
-            AI Brief
+        {/* ─────────────────────────────
+            AI BRIEF
+        ───────────────────────────── */}
+
+        <section className="mt-5 rounded-2xl bg-shell/80 p-4 sm:p-5">
+
+          <div className="flex items-center gap-2">
+
+            <Sparkles className="h-4 w-4 text-signal" />
+
+            <p className="text-[10px] font-bold uppercase tracking-[0.18em] text-signal">
+              {aiSummary?.summary
+                ? "AI Brief"
+                : "Brief"}
+            </p>
+
           </div>
 
-          <p
-            className="
-              line-clamp-3
-              text-sm
-              leading-6
-              text-slate-600
-              dark:text-slate-300
-            "
-          >
-            {description}
+          <p className="mt-2 line-clamp-4 text-sm leading-6 text-slate-600 dark:text-slate-300">
+            {brief}
           </p>
-        </div>
+        </section>
 
-        {/* Metadata */}
-        <div
-          className="
-            mt-4
-            flex
-            flex-wrap
-            items-center
-            gap-x-4
-            gap-y-2
-            text-xs
-            font-medium
-            text-slate-500
-            dark:text-slate-400
-          "
-        >
-          <span className="inline-flex items-center gap-1.5">
-            <Clock3 size={13} />
-            {readingTime} min read
+        {/* ─────────────────────────────
+            KEY POINTS
+        ───────────────────────────── */}
+
+        {keyPoints.length > 0 && (
+          <section className="mt-5">
+
+            <p className="text-[10px] font-bold uppercase tracking-[0.18em] text-slate-400 dark:text-slate-500">
+              Key takeaways
+            </p>
+
+            <div className="mt-3 space-y-2.5">
+
+              {keyPoints.map((point, index) => (
+                <div
+                  key={`${story.id}-point-${index}`}
+                  className="flex gap-3"
+                >
+                  <span className="mt-[7px] h-1.5 w-1.5 shrink-0 rounded-full bg-signal" />
+
+                  <p className="line-clamp-2 text-xs leading-5 text-slate-600 dark:text-slate-300">
+                    {point}
+                  </p>
+                </div>
+              ))}
+
+            </div>
+          </section>
+        )}
+
+        {/* ─────────────────────────────
+            WHY IT MATTERS
+        ───────────────────────────── */}
+
+        {aiSummary?.whyItMatters && (
+          <section className="mt-5">
+
+            <p className="text-[10px] font-bold uppercase tracking-[0.18em] text-slate-400 dark:text-slate-500">
+              Why it matters
+            </p>
+
+            <p className="mt-2 text-xs leading-5 text-slate-600 dark:text-slate-300">
+              {aiSummary.whyItMatters}
+            </p>
+
+          </section>
+        )}
+
+        {/* ─────────────────────────────
+            METADATA
+        ───────────────────────────── */}
+
+        <div className="mt-5 flex flex-wrap items-center gap-x-3 gap-y-2 text-xs text-slate-500 dark:text-slate-400">
+
+          <span>
+            {sourceCount}{" "}
+            {sourceCount === 1 ? "source" : "sources"}
           </span>
 
-          {sourceCount && sourceCount > 1 ? (
-            <span className="inline-flex items-center gap-1.5">
-              <Globe2 size={13} />
-              {sourceCount} sources
-            </span>
-          ) : null}
+          <span>•</span>
+
+          <span className="inline-flex items-center gap-1.5">
+            <Clock3 className="h-3.5 w-3.5" />
+
+            {minutesToRead} min read
+          </span>
+
         </div>
 
-        {/* =======================================================
+        {/* ─────────────────────────────
             ACTIONS
-        ======================================================== */}
+        ───────────────────────────── */}
 
-        <div
-          className="
-            mt-5
-            flex
-            items-center
-            justify-between
-            gap-3
-            border-t
-            border-slate-200/80
-            pt-4
-            dark:border-white/[0.08]
-          "
-        >
-          <div className="flex items-center gap-1 sm:gap-1.5">
-            {/* Save */}
-            {isSignedIn ? (
-              <IconButton
-                label={isBookmarked ? "Remove from saved stories" : "Save story"}
+        <div className="mt-4 flex items-center justify-between border-t border-stroke pt-3">
+
+          <div className="flex items-center">
+
+            {isSignedIn && (
+              <>
+                <ActionButton
+                  label="More like this"
+                  active={feedback === "LIKE"}
+                  onClick={() => handleFeedback("LIKE")}
+                >
+                  <span className="text-base">
+                    ♥
+                  </span>
+                </ActionButton>
+
+                <ActionButton
+                  label="Less like this"
+                  active={feedback === "DISLIKE"}
+                  onClick={() => handleFeedback("DISLIKE")}
+                >
+                  <span className="text-base">
+                    ↓
+                  </span>
+                </ActionButton>
+              </>
+            )}
+
+            <ActionButton
+              label="Share story"
+              onClick={handleShare}
+            >
+              <Share2 className="h-4 w-4" />
+            </ActionButton>
+
+            {isSignedIn && (
+              <ActionButton
+                label={
+                  isBookmarked
+                    ? "Remove bookmark"
+                    : "Save story"
+                }
                 active={isBookmarked}
-                disabled={toggleBookmark.isPending}
                 onClick={handleBookmark}
               >
                 {isBookmarked ? (
-                  <BookmarkCheck size={18} />
+                  <BookmarkCheck className="h-4 w-4" />
                 ) : (
-                  <Bookmark size={18} />
+                  <Bookmark className="h-4 w-4" />
                 )}
-              </IconButton>
-            ) : null}
+              </ActionButton>
+            )}
 
-            {/* Share */}
-            <IconButton label="Share story" onClick={handleShare}>
-              <Share2 size={18} />
-            </IconButton>
+            {isSignedIn && (
+              <ActionButton
+                label="Hide story"
+                active={Boolean(isSkipped)}
+                onClick={handleSkip}
+              >
+                <MoreHorizontal className="h-4 w-4" />
+              </ActionButton>
+            )}
 
-            {/* Feed feedback */}
-            {isSignedIn ? (
-              <>
-                <IconButton
-                  label="More stories like this"
-                  active={feedback === "LIKE"}
-                  disabled={setFeedback.isPending}
-                  onClick={(event) => handleFeedback(event, "LIKE")}
-                >
-                  <ThumbsUp size={17} />
-                </IconButton>
-
-                <IconButton
-                  label="Fewer stories like this"
-                  active={feedback === "DISLIKE"}
-                  disabled={setFeedback.isPending}
-                  onClick={(event) => handleFeedback(event, "DISLIKE")}
-                >
-                  <ThumbsDown size={17} />
-                </IconButton>
-              </>
-            ) : null}
           </div>
 
-          {/* Primary action */}
-          <Link
-            to={storyUrl}
-            className="
-              inline-flex
-              shrink-0
-              items-center
-              gap-2
-              rounded-full
-              bg-slate-950
-              px-3
-              py-2
-              text-xs
-              font-bold
-              text-white
-              shadow-sm
-              transition-all
-              hover:-translate-y-0.5
-              hover:bg-slate-800
-              hover:shadow-md
-              dark:bg-white
-              dark:text-slate-950
-              dark:hover:bg-slate-100
-              sm:px-4
-              sm:py-2.5
-            "
-          >
-            Understand
-            <span aria-hidden="true">→</span>
-          </Link>
         </div>
+
+        {/* ─────────────────────────────
+            PRIMARY ACTION
+        ───────────────────────────── */}
+
+        <Link
+          to={`/stories/${story.id}`}
+          className="
+            mt-3
+            flex
+            h-12
+            items-center
+            justify-center
+            gap-2
+            rounded-xl
+            bg-signal
+            text-sm
+            font-bold
+            text-white
+            transition
+            hover:opacity-90
+            active:scale-[0.99]
+          "
+        >
+          Understand this story
+
+          <span aria-hidden="true">
+            →
+          </span>
+        </Link>
+
       </div>
     </article>
   );
 }
 
-function IconButton({
-  children,
-  label,
-  active = false,
-  disabled = false,
-  onClick,
-}) {
-  return (
-    <button
-      type="button"
-      aria-label={label}
-      title={label}
-      disabled={disabled}
-      onClick={onClick}
-      className={[
-        `
-          inline-flex
-          h-9
-          w-9
-          items-center
-          justify-center
-          rounded-full
-          border
-          transition-all
-          disabled:cursor-not-allowed
-          disabled:opacity-50
-          sm:h-10
-          sm:w-10
-        `,
-        active
-          ? `
-            border-amber-300
-            bg-amber-50
-            text-amber-700
-            dark:border-amber-500/30
-            dark:bg-amber-500/10
-            dark:text-amber-300
-          `
-          : `
-            border-slate-200
-            bg-white
-            text-slate-500
-            hover:border-slate-300
-            hover:bg-slate-50
-            hover:text-slate-800
-            dark:border-white/[0.08]
-            dark:bg-slate-900
-            dark:text-slate-400
-            dark:hover:bg-slate-800
-            dark:hover:text-white
-          `,
-      ].join(" ")}
-    >
-      {children}
-    </button>
-  );
-}
+export default StoryCard;
