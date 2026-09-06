@@ -190,14 +190,17 @@ model UserSourcePreference {
 }
 
 model AISummary {
-  id        String   @id @default(uuid()) @db.Uuid
-  storyId   String   @map("story_id") @db.Uuid
-  summary   String
-  model     String
-  version   String
-  createdAt DateTime @default(now()) @map("created_at")
-  entities  Json?
-  story     Story    @relation(fields: [storyId], references: [id], onDelete: Cascade)
+  id           String   @id @default(uuid()) @db.Uuid
+  storyId      String   @map("story_id") @db.Uuid
+  summary      String
+  keyPoints    Json?    @map("key_points")
+  whyItMatters String?  @map("why_it_matters")
+  whatNext     String?  @map("what_next")
+  model        String
+  version      String
+  createdAt    DateTime @default(now()) @map("created_at")
+  entities     Json?
+  story        Story    @relation(fields: [storyId], references: [id], onDelete: Cascade)
 
   @@unique([storyId, model, version])
   @@map("ai_summaries")

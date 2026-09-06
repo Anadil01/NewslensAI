@@ -64,6 +64,8 @@ Required structure:
         "Important point 2",
         "Important point 3"
     ],
+    "whyItMatters": "Why this development matters, or null when the article does not support one.",
+    "whatNext": "What to watch next, or null when the article does not support one.",
     "entities": [
         "Important person, organization, place or event"
     ],
@@ -75,15 +77,17 @@ Rules:
 1. Do not invent facts.
 2. Use only information present in the article.
 3. Keep the summary neutral and factual.
-4. Do not include markdown.
-5. confidence must be between 0 and 1.
-6. Return valid JSON only.
-7. Do not return explanations outside the JSON.
-8. Do not return <think> tags.
-9. Do not wrap the JSON in markdown code fences.
-10. Make sure all JSON strings are properly escaped.
-11. Always close every JSON object and array.
-12. Do not truncate the response.
+4. keyPoints must contain up to three distinct, factual points from the article.
+5. whyItMatters and whatNext must be null when the article does not support them.
+6. Do not include markdown.
+7. confidence must be between 0 and 1.
+8. Return valid JSON only.
+9. Do not return explanations outside the JSON.
+10. Do not return <think> tags.
+11. Do not wrap the JSON in markdown code fences.
+12. Make sure all JSON strings are properly escaped.
+13. Always close every JSON object and array.
+14. Do not truncate the response.
 """,
                 },
                 {
@@ -248,6 +252,22 @@ Rules:
             if point is not None
         ]
 
+        def optional_text(field_name):
+            value = result.get(field_name)
+
+            if value is None:
+                return None
+
+            if not isinstance(value, str):
+                raise ValueError(
+                    f"AI response field {field_name} must be a string or null"
+                )
+
+            return value.strip() or None
+
+        why_it_matters = optional_text("whyItMatters")
+        what_next = optional_text("whatNext")
+
         # -----------------------------------------
         # Validate entities
         # -----------------------------------------
@@ -304,6 +324,8 @@ Rules:
         return {
             "summary": summary,
             "keyPoints": key_points,
+            "whyItMatters": why_it_matters,
+            "whatNext": what_next,
             "entities": entities,
             "confidence": confidence,
         }

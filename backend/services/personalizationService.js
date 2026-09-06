@@ -402,6 +402,22 @@ const getPersonalizedFeed = async ({
           include: {
             topic: true
           }
+        },
+
+        // Feed cards surface the most recent NewsLens brief. Keeping this
+        // bounded prevents the recommendation query from loading summary
+        // history for every candidate story.
+        aiSummaries: {
+          orderBy: {
+            createdAt: "desc"
+          },
+          take: 1,
+          select: {
+            summary: true,
+            model: true,
+            version: true,
+            createdAt: true
+          }
         }
       },
 
@@ -1700,4 +1716,3 @@ module.exports = {
   // and therefore does not go through the recommendation engine.
   diversifyByCluster
 };
-

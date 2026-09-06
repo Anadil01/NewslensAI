@@ -28,6 +28,9 @@ const storyListInclude = {
     take: 1,
     select: {
       summary: true,
+      keyPoints: true,
+      whyItMatters: true,
+      whatNext: true,
       model: true,
       version: true,
       createdAt: true
@@ -58,6 +61,9 @@ const storyDetailInclude = {
     take: 1,
     select: {
       summary: true,
+      keyPoints: true,
+      whyItMatters: true,
+      whatNext: true,
       entities: true,
       model: true,
       version: true,

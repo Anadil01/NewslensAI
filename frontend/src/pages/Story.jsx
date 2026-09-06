@@ -126,7 +126,11 @@ function Story() {
   }
 
   const primaryTopic = getPrimaryTopic(story);
-  const summary = getLatestSummary(story);
+  const aiSummary = getLatestSummaryRecord(story);
+  const summary = aiSummary?.summary || null;
+  const keyPoints = getKeyPoints(aiSummary);
+  const whyItMatters = getStructuredText(aiSummary?.whyItMatters);
+  const whatNext = getStructuredText(aiSummary?.whatNext);
   const coverageStories = getCoverageStories(
     cluster,
     story.id
@@ -134,9 +138,13 @@ function Story() {
 
   const sourceCount = getSourceCount(cluster);
   const coverageCount = cluster?.stories?.length || 1;
+  const readingTime = estimateReadingTime(
+    story.content || story.excerpt || summary
+  );
+  const timeline = buildCoverageTimeline(story, cluster?.stories || []);
 
   return (
-    <div className="mx-auto max-w-6xl space-y-12">
+    <div className="mx-auto max-w-[720px] space-y-10">
 
       {/* --------------------------------------------------
           BACK
@@ -154,7 +162,11 @@ function Story() {
           STORY HEADER
       -------------------------------------------------- */}
 
-      <section className="overflow-hidden rounded-[36px] border border-stroke bg-white/80 p-6 shadow-sm backdrop-blur-xl sm:p-8 lg:p-10 dark:border-white/10 dark:bg-slate-900/75">
+      <section className="overflow-hidden rounded-[28px] border border-stroke bg-white/80 shadow-sm backdrop-blur-xl dark:border-white/10 dark:bg-slate-900/75">
+
+        <StoryVisual story={story} />
+
+        <div className="p-5 sm:p-7">
 
         <div className="flex flex-wrap items-center gap-2">
 
@@ -214,23 +226,9 @@ function Story() {
           )}
         </div>
 
-        <div className="mt-8 flex flex-wrap gap-3">
-
-          {story.canonicalUrl && (
-            <a
-              href={story.canonicalUrl}
-              target="_blank"
-              rel="noreferrer"
-              className="inline-flex items-center gap-2 rounded-full bg-slate-950 px-5 py-3 text-sm font-bold text-white transition hover:bg-slate-800 dark:bg-white dark:text-slate-950 dark:hover:bg-slate-200"
-            >
-              Read original story
-              <ExternalLinkIcon />
-            </a>
-          )}
-        </div>
-
-        <div className="mt-8 border-t border-stroke pt-6 dark:border-white/10">
-          <StoryActions storyId={story.id} />
+          <div className="mt-8 border-t border-stroke pt-6 dark:border-white/10">
+            <StoryActions storyId={story.id} />
+          </div>
         </div>
       </section>
 
@@ -269,74 +267,62 @@ function Story() {
                 </p>
               )}
 
-              {story.content && (
-                <div className="mt-6 border-t border-stroke pt-5 dark:border-white/10">
+              {keyPoints.length || whyItMatters || whatNext ? (
+                <div className="mt-6 space-y-5 border-t border-stroke pt-5 dark:border-white/10">
+                  {keyPoints.length ? (
+                    <div>
+                      <p className="text-xs font-bold uppercase tracking-[0.16em] text-slate-400">
+                        Key points
+                      </p>
+                      <ul className="mt-3 space-y-2.5">
+                        {keyPoints.map((point) => (
+                          <li key={point} className="flex gap-3 text-sm leading-6 text-slate-600 dark:text-slate-300">
+                            <span className="mt-2 h-1.5 w-1.5 shrink-0 rounded-full bg-amber-500 dark:bg-amber-400" />
+                            <span>{point}</span>
+                          </li>
+                        ))}
+                      </ul>
+                    </div>
+                  ) : null}
 
-                  <p className="text-xs font-bold uppercase tracking-[0.16em] text-slate-400">
-                    Story context
-                  </p>
+                  {whyItMatters || whatNext ? (
+                    <div className="grid gap-3 sm:grid-cols-2">
+                      {whyItMatters ? (
+                        <StructuredInsight
+                          label="Why it matters"
+                          text={whyItMatters}
+                        />
+                      ) : null}
 
-                  <p className="mt-2 text-sm leading-7 text-slate-500 dark:text-slate-400">
-                    {story.content}
-                  </p>
-
+                      {whatNext ? (
+                        <StructuredInsight
+                          label="What to watch next"
+                          text={whatNext}
+                        />
+                      ) : null}
+                    </div>
+                  ) : null}
                 </div>
-              )}
+              ) : null}
 
             </div>
           </div>
         </div>
-      </section>
 
-      {/* --------------------------------------------------
-          STORY SIGNALS
-      -------------------------------------------------- */}
-
-      <section>
-        <SectionHeading
-          eyebrow="Story signals"
-          title="What NewsLens knows"
-          description="Signals calculated from the story and its multi-source coverage."
-        />
-
-        <div className="mt-5 grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
-
-          <Signal
-            label="Sources"
-            value={story.clusterId ? sourceCount : 1}
-            description={
-              story.clusterId
-                ? "distinct sources"
-                : "source covering this story"
-            }
-          />
-
-          <Signal
-            label="Coverage"
-            value={coverageCount}
-            description={
-              story.clusterId
-                ? "articles in cluster"
-                : "article in story"
-            }
-          />
-
-          <Signal
-            label="Topic"
-            value={primaryTopic || "—"}
-            description="primary topic"
-          />
-
-          <Signal
-            label="Updated"
-            value={
-              story.updatedAt
-                ? formatRelativeTime(story.updatedAt)
-                : "—"
-            }
-            description="story record"
-          />
-
+        <div className="mt-5 flex flex-wrap items-center gap-x-4 gap-y-2 border-t border-stroke pt-5 text-sm font-semibold text-slate-500 dark:border-white/10 dark:text-slate-400">
+          <span>{readingTime} min read</span>
+          <span aria-hidden="true">·</span>
+          <span>
+            {story.clusterId && sourceCount > 1
+              ? `${sourceCount} sources`
+              : "1 source"}
+          </span>
+          {story.clusterId ? (
+            <>
+              <span aria-hidden="true">·</span>
+              <span>{coverageCount} reports</span>
+            </>
+          ) : null}
         </div>
       </section>
 
@@ -347,8 +333,8 @@ function Story() {
       <section>
         <SectionHeading
           eyebrow="Multi-source coverage"
-          title="See the story from different sources"
-          description="NewsLens groups reporting about the same event so you can compare coverage instead of opening articles one by one."
+          title="How different sources cover it"
+          description="Compare reporting about the same event without opening every article."
         />
 
         {clusterLoading ? (
@@ -366,16 +352,15 @@ function Story() {
             No additional coverage is available for this story yet.
           </EmptyBlock>
         ) : (
-          <div className="mt-5 grid gap-5 md:grid-cols-2">
+          <>
+            <SourceTabs stories={[story, ...coverageStories]} />
 
-            {coverageStories.map((item) => (
-              <CoverageCard
-                key={item.id}
-                story={item}
-              />
-            ))}
-
-          </div>
+            <div className="mt-5 grid gap-5">
+              {coverageStories.map((item) => (
+                <CoverageCard key={item.id} story={item} />
+              ))}
+            </div>
+          </>
         )}
       </section>
 
@@ -385,9 +370,9 @@ function Story() {
 
       <section>
         <SectionHeading
-          eyebrow="Source context"
-          title="Know where the coverage comes from"
-          description="NewsLens provides the source information available in its database so you can read coverage with more context."
+          eyebrow="Perspectives"
+          title="Source context and signals"
+          description="Review the source information and bias signals NewsLens has available for this coverage."
         />
 
         {clusterLoading ? (
@@ -398,6 +383,28 @@ function Story() {
           <SourceOverview stories={cluster?.stories || []} />
         )}
       </section>
+
+      <section>
+        <SectionHeading
+          eyebrow="Story timeline"
+          title="Coverage as it developed"
+          description="Built from the reporting currently connected to this story."
+        />
+
+        <StoryTimeline events={timeline} />
+      </section>
+
+      {story.canonicalUrl ? (
+        <a
+          href={story.canonicalUrl}
+          target="_blank"
+          rel="noreferrer"
+          className="flex items-center justify-between rounded-[24px] border border-stroke bg-white/75 px-5 py-4 text-sm font-bold text-slate-800 transition hover:border-amber-300 hover:text-amber-700 dark:border-white/10 dark:bg-slate-900/70 dark:text-slate-100 dark:hover:text-amber-400"
+        >
+          Read original article
+          <ExternalLinkIcon />
+        </a>
+      ) : null}
 
       {/* --------------------------------------------------
           RELATED STORIES
@@ -434,31 +441,110 @@ function Story() {
   );
 }
 
-/* =========================================================
-   SIGNAL
-========================================================= */
+function StoryVisual({ story }) {
+  const imageUrl = story?.imageUrl || story?.image_url;
+  const sourceName = story?.source?.name || "NewsLensAI";
+  const initials = sourceName
+    .split(" ")
+    .filter(Boolean)
+    .slice(0, 2)
+    .map((word) => word[0])
+    .join("")
+    .toUpperCase();
 
-function Signal({
-  label,
-  value,
-  description,
-}) {
   return (
-    <div className="rounded-[26px] border border-stroke bg-white/70 p-5 shadow-sm dark:border-white/10 dark:bg-slate-900/70">
+    <div className="relative aspect-[4/3] overflow-hidden bg-slate-100 dark:bg-slate-800">
+      {imageUrl ? (
+        <img
+          src={imageUrl}
+          alt={story.title}
+          loading="eager"
+          className="relative z-10 h-full w-full object-cover"
+          onError={(event) => {
+            event.currentTarget.style.display = "none";
+          }}
+        />
+      ) : null}
 
-      <p className="text-xs font-bold uppercase tracking-[0.16em] text-slate-400">
+      <div className="absolute inset-0 flex items-center justify-center bg-[radial-gradient(circle_at_top_right,rgba(20,184,166,0.24),transparent_35%),radial-gradient(circle_at_bottom_left,rgba(245,158,11,0.22),transparent_40%)] dark:bg-[radial-gradient(circle_at_top_right,rgba(45,212,191,0.15),transparent_35%),radial-gradient(circle_at_bottom_left,rgba(251,191,36,0.12),transparent_40%)]">
+        <span className="flex h-20 w-20 items-center justify-center rounded-3xl border border-white/70 bg-white/75 text-lg font-black text-slate-700 shadow-lg backdrop-blur dark:border-white/10 dark:bg-slate-950/40 dark:text-white">
+          {initials || "NL"}
+        </span>
+      </div>
+
+      <div className="pointer-events-none absolute inset-x-0 bottom-0 z-20 h-24 bg-gradient-to-t from-black/35 to-transparent" />
+    </div>
+  );
+}
+
+function StructuredInsight({ label, text }) {
+  return (
+    <div className="rounded-2xl border border-slate-200/70 bg-slate-50 p-4 dark:border-white/[0.06] dark:bg-slate-800/60">
+      <p className="text-[11px] font-extrabold uppercase tracking-[0.14em] text-teal-700 dark:text-teal-300">
         {label}
       </p>
-
-      <p className="mt-2 break-words text-2xl font-black text-slate-950 dark:text-white">
-        {value}
+      <p className="mt-2 text-sm leading-6 text-slate-600 dark:text-slate-300">
+        {text}
       </p>
-
-      <p className="mt-1 text-xs text-slate-400">
-        {description}
-      </p>
-
     </div>
+  );
+}
+
+function SourceTabs({ stories }) {
+  const sources = uniqueSources(stories);
+
+  if (!sources.length) {
+    return null;
+  }
+
+  return (
+    <div className="mt-5 flex gap-2 overflow-x-auto pb-1 scrollbar-none" aria-label="Sources covering this story">
+      {sources.map((source) => (
+        <span
+          key={source.id}
+          className="shrink-0 rounded-full border border-teal-200 bg-teal-50 px-3 py-1.5 text-xs font-bold text-teal-700 dark:border-teal-500/20 dark:bg-teal-500/10 dark:text-teal-300"
+        >
+          {source.name}
+        </span>
+      ))}
+    </div>
+  );
+}
+
+function StoryTimeline({ events }) {
+  if (!events.length) {
+    return (
+      <EmptyBlock>
+        A coverage timeline will appear as dated reporting becomes available.
+      </EmptyBlock>
+    );
+  }
+
+  return (
+    <ol className="mt-5 space-y-0 rounded-[28px] border border-stroke bg-white/75 p-5 dark:border-white/10 dark:bg-slate-900/70">
+      {events.map((event, index) => (
+        <li key={event.id} className="relative flex gap-4 pb-6 last:pb-0">
+          <div className="flex w-4 shrink-0 flex-col items-center">
+            <span className="mt-1.5 h-3 w-3 rounded-full bg-teal-600 ring-4 ring-teal-100 dark:bg-teal-400 dark:ring-teal-500/10" />
+            {index < events.length - 1 ? (
+              <span className="mt-2 w-px flex-1 bg-slate-200 dark:bg-white/10" />
+            ) : null}
+          </div>
+
+          <div className="min-w-0">
+            <p className="text-xs font-bold uppercase tracking-[0.14em] text-teal-700 dark:text-teal-400">
+              {formatDate(event.date)}
+            </p>
+            <h3 className="mt-1 text-sm font-bold text-slate-900 dark:text-white">
+              Reported by {event.sourceName}
+            </h3>
+            <p className="mt-1 line-clamp-2 text-sm leading-6 text-slate-500 dark:text-slate-400">
+              {event.title}
+            </p>
+          </div>
+        </li>
+      ))}
+    </ol>
   );
 }
 
@@ -707,7 +793,7 @@ function RelatedStoryRow({ story }) {
    HELPERS
 ========================================================= */
 
-function getLatestSummary(story) {
+function getLatestSummaryRecord(story) {
   if (!Array.isArray(story?.aiSummaries)) {
     return null;
   }
@@ -730,7 +816,29 @@ function getLatestSummary(story) {
       new Date(a.createdAt).getTime()
   );
 
-  return summaries[0]?.summary || null;
+  return summaries[0] || null;
+}
+
+function getLatestSummary(story) {
+  return getLatestSummaryRecord(story)?.summary || null;
+}
+
+function getKeyPoints(summary) {
+  if (!Array.isArray(summary?.keyPoints)) {
+    return [];
+  }
+
+  return summary.keyPoints
+    .filter((point) => typeof point === "string")
+    .map((point) => point.trim())
+    .filter(Boolean)
+    .slice(0, 3);
+}
+
+function getStructuredText(value) {
+  return typeof value === "string" && value.trim()
+    ? value.trim()
+    : null;
 }
 
 function getPrimaryTopic(story) {
@@ -771,6 +879,40 @@ function getSourceCount(cluster) {
       .map((story) => story.sourceId || story.source?.id)
       .filter(Boolean)
   ).size;
+}
+
+function estimateReadingTime(text) {
+  const words = String(text || "")
+    .trim()
+    .split(/\s+/)
+    .filter(Boolean).length;
+
+  return Math.max(1, Math.ceil(words / 220));
+}
+
+function buildCoverageTimeline(story, clusterStories) {
+  const stories = [
+    story,
+    ...clusterStories.filter((item) => item.id !== story.id),
+  ]
+    .map((item) => ({
+      id: item.id,
+      date: item.publishedAt || item.createdAt,
+      title: item.title,
+      sourceName: item.source?.name || "Unknown source",
+    }))
+    .filter((item) => item.date && item.title)
+    .sort((a, b) => new Date(a.date) - new Date(b.date));
+
+  if (stories.length <= 3) {
+    return stories;
+  }
+
+  return [
+    stories[0],
+    stories[Math.floor(stories.length / 2)],
+    stories[stories.length - 1],
+  ];
 }
 
 function uniqueSources(stories) {

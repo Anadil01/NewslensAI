@@ -49,8 +49,10 @@ def get_or_create_source(
                 (
                     name,
                     website_url,
-                    source_type, political_lean, reliability_score,
-                    source_id
+                    source_type,
+                    political_lean,
+                    reliability_score,
+                    source_id,
                 )
             )
 
@@ -81,7 +83,9 @@ def get_or_create_source(
                     name,
                     slug,
                     website_url,
-                    source_type, political_lean, reliability_score,
+                    source_type,
+                    political_lean,
+                    reliability_score,
                 )
             )
 
@@ -134,6 +138,7 @@ def save_story(source_id, story):
                     points = %s,
                     content = %s,
                     excerpt = %s,
+                    image_url = %s,
                     published_at = %s,
                     updated_at = %s
                 WHERE id = %s
@@ -145,9 +150,10 @@ def save_story(source_id, story):
                     story.get("points"),
                     story.get("content"),
                     story.get("excerpt"),
+                    story.get("image_url"),
                     story.get("published_at"),
                     now,
-                    story_id
+                    story_id,
                 )
             )
 
@@ -171,6 +177,7 @@ def save_story(source_id, story):
                     points,
                     content,
                     excerpt,
+                    image_url,
                     content_status,
                     published_at,
                     created_at,
@@ -178,7 +185,7 @@ def save_story(source_id, story):
                 )
                 VALUES (
                     %s, %s, %s, %s, %s, %s, %s,
-                    %s, %s, %s, %s, %s, %s
+                    %s, %s, %s, %s, %s, %s, %s
                 )
                 """,
                 (
@@ -191,10 +198,11 @@ def save_story(source_id, story):
                     story.get("points"),
                     story.get("content"),
                     story.get("excerpt"),
+                    story.get("image_url"),
                     "EXTERNAL_ONLY",
                     story.get("published_at"),
                     now,
-                    now
+                    now,
                 )
             )
 
@@ -204,7 +212,7 @@ def save_story(source_id, story):
 
         return {
             "action": action,
-            "story_id": str(story_id)
+            "story_id": str(story_id),
         }
 
     except Exception:
@@ -244,11 +252,13 @@ def get_stories_needing_content(limit=10):
         stories = []
 
         for row in rows:
-            stories.append({
-                "id": str(row[0]),
-                "canonical_url": row[1],
-                "title": row[2]
-            })
+            stories.append(
+                {
+                    "id": str(row[0]),
+                    "canonical_url": row[1],
+                    "title": row[2],
+                }
+            )
 
         return stories
 
@@ -266,7 +276,7 @@ def scrape_newsapi():
     return client.get_top_headlines(
         country="us",
         category="technology",
-        page_size=10
+        page_size=10,
     )
 
 
@@ -276,7 +286,7 @@ newsapi_source = {
     "website_url": "https://newsapi.org",
     "type": "API",
     "enabled": True,
-    "scraper": scrape_newsapi
+    "scraper": scrape_newsapi,
 }
 
 
@@ -302,7 +312,7 @@ def update_story_content(story_id, content):
                 content,
                 "FULL",
                 datetime.now(timezone.utc),
-                story_id
+                story_id,
             )
         )
 

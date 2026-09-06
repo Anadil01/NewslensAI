@@ -29,7 +29,7 @@ AI_MODEL = os.getenv(
     "nvidia/nemotron-3-super-120b-a12b:free",
 )
 
-AI_VERSION = "v1"
+AI_VERSION = "v2"
 
 
 def get_stories_needing_summary(
@@ -276,9 +276,24 @@ def validate_ai_result(result):
         if str(entity).strip()
     ][:8]
 
+    why_it_matters = result.get("whyItMatters")
+    what_next = result.get("whatNext")
+
+    for field_name, value in (
+        ("whyItMatters", why_it_matters),
+        ("whatNext", what_next),
+    ):
+        if value is not None and not isinstance(value, str):
+            raise ValueError(f"{field_name} must be a string or null")
+
+    why_it_matters = why_it_matters.strip() if why_it_matters else None
+    what_next = what_next.strip() if what_next else None
+
     return {
         "summary": summary,
         "keyPoints": key_points,
+        "whyItMatters": why_it_matters,
+        "whatNext": what_next,
         "entities": entities,
         "confidence": confidence,
     }
@@ -371,6 +386,8 @@ def generate_fallback_summary(
     return {
         "summary": summary,
         "keyPoints": [],
+        "whyItMatters": None,
+        "whatNext": None,
         "entities": [],
         "confidence": 0.4,
     }
@@ -508,6 +525,15 @@ def summarize_stories(
                             [],
                         )
                     ),
+                    "key_points": (
+                        existing_summary.get("key_points", [])
+                    ),
+                    "why_it_matters": (
+                        existing_summary.get("why_it_matters")
+                    ),
+                    "what_next": (
+                        existing_summary.get("what_next")
+                    ),
                 }
             )
 
@@ -608,6 +634,9 @@ def summarize_stories(
                 model=model_used,
                 version=version,
                 entities=ai_result["entities"],
+                key_points=ai_result["keyPoints"],
+                why_it_matters=ai_result["whyItMatters"],
+                what_next=ai_result["whatNext"],
             )
 
             results.append(
@@ -628,6 +657,12 @@ def summarize_stories(
                     "version": version,
                     "key_points": (
                         ai_result["keyPoints"]
+                    ),
+                    "why_it_matters": (
+                        ai_result["whyItMatters"]
+                    ),
+                    "what_next": (
+                        ai_result["whatNext"]
                     ),
                     "entities": (
                         ai_result["entities"]
@@ -672,4 +707,3 @@ def summarize_stories(
             )
 
     return results
-
