@@ -8,11 +8,15 @@ The distinguishing idea is **story clustering**: rather than presenting a flat l
 headlines, articles covering the same event are grouped, so the same story can be read
 across outlets with differing perspectives.
 
-> **Status:** backend and ingestion are the active focus and are working end to end.
-> The frontend is intentionally out of scope for the current phase. There is no
-> containerization, CI, or deployment configuration yet. See [`currStatus.md`](currStatus.md)
-> for an audited, area-by-area breakdown, and [`METRICS.md`](METRICS.md) for the
-> benchmarking plan.
+> **Current status:** NewsLensAI is now a full-stack project with an implemented
+> Node.js/Express backend, Python ingestion and AI pipeline, and React/Vite frontend.
+> Backend and ingestion are the active integration focus; the frontend has completed
+> API-response, TanStack Query, and authentication/session alignment, with several
+> product surfaces still in progress. A Dockerfile packages the backend and ingestion
+> services, while CI/CD and external deployment configuration remain out of scope.
+> See [`frontend/readme.md`](frontend/readme.md) for frontend progress,
+> [`METRICS.md`](METRICS.md) for the benchmarking plan, and
+> [`UpGradeProject.md`](UpGradeProject.md) for the upgrade roadmap.
 
 ---
 
@@ -29,7 +33,7 @@ PostgreSQL (Prisma schema + migrations)
         ↓
 AI enrichment
    ├── content extraction
-   ├── summarization (OpenRouter)
+   ├── summarization (Gemini default · OpenRouter supported)
    ├── topic classification
    ├── embeddings → story clustering
    └── bias / tone signals
@@ -38,7 +42,7 @@ Node.js API — stories, clusters, personalization
         ↓
 Redis cache  +  Elasticsearch full-text search
         ↓
-React frontend (out of scope this phase)
+React frontend (API integration complete; feature completion in progress)
 ```
 
 Ingestion runs as a separate Python service because scraping and AI enrichment are
@@ -53,23 +57,26 @@ Elasticsearch, JWT, bcrypt, Helmet, express-rate-limit, Zod. Tests run on the bu
 `node --test` runner with supertest for route-level coverage.
 
 **Ingestion** — Python 3.9+, BeautifulSoup, requests, feed parsing, sentence-transformers
-for embeddings, OpenAI-compatible client against OpenRouter, psycopg2. Tests run on pytest.
+for embeddings, OpenAI-compatible clients for Gemini (default) and OpenRouter, and
+psycopg2. Tests run on pytest.
 
-**Frontend** — React, React Router, Axios, Context API, Vite.
+**Frontend** — React 19, React Router 7, Axios, TanStack Query, Context API,
+Tailwind CSS 4, and Vite 8.
 
 ## Repository layout
 
 ```
 backend/           Express API, services, recommendation engine, Prisma schema, workers
   recommendation/  ranking engine (signals, affinity, penalties, scoring, diversification)
-  tests/           186 unit + route tests
+  tests/           unit + route tests
 ingestion/         Python ingestion + AI pipeline
   config/sources/  source registry and per-source adapters
   tests/           automated pytest suite
   scripts/         manual verification scripts (see note below)
-frontend/          React client
-currStatus.md      audited status by area
+frontend/          React client; API integration complete, feature work in progress
+Dockerfile         backend + ingestion container image
 METRICS.md         benchmarking plan
+UpGradeProject.md  upgrade roadmap and planned product work
 ```
 
 ## Getting started
@@ -133,6 +140,9 @@ ELASTICSEARCH_URL=http://localhost:9200
 CLIENT_URL=http://localhost:5173
 
 # Used by the ingestion service
+AI_PROVIDER=gemini                 # gemini (default) or openrouter
+GEMINI_API_KEY=
+GEMINI_MODEL=gemini-3.6-flash
 NEWS_API_KEY=
 OPENROUTER_API_KEY=
 
@@ -276,13 +286,15 @@ Honest accounting of what is not done, in rough priority order:
   `reliabilityScore`, and the cluster API exposes them, but no AllSides / Ad Fontes ratings
   have been ingested. This is the highest-value remaining work — it unlocks the product's
   core differentiator and the plumbing already exists.
-- **No integration tests or CI.** No `.github/` workflows, no coverage reporting.
-- **No Docker or deployment configuration.** The earlier Vercel/Render setup described in
-  previous versions of this README no longer reflects the repo.
+- **No integration tests or CI.** No `.github/` workflows or coverage reporting.
+- **Deployment is not production-ready.** A Dockerfile packages the backend and ingestion
+  services, but there is no CI/CD, external platform configuration, or documented
+  multi-service deployment for PostgreSQL, Redis, Elasticsearch, and the frontend.
 - **AI pipeline has no durable per-stage state** or stage-level dead-letter policy.
 - **Source coverage is 3 adapters**, against a target of many more.
-- **Offset-based pagination** throughout, and feed ordering by `points` has no matching
-  composite index.
+- **Pagination is still offset-based in core endpoints.** Story, search, cluster, and feed
+  flows use page/skip or in-memory slicing; the API's `nextCursor` field is not yet a
+  complete cursor-pagination implementation.
 - **Observability is console logging only** — no structured logs, metrics backend, tracing,
   or alerting.
 
