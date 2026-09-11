@@ -1,0 +1,5 @@
+node_modules/
+backend/node_modules/
+ingestion/venv/
+.env
+.git

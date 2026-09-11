@@ -10,6 +10,7 @@ import {
 } from "lucide-react";
 
 import { useAuth } from "../context/useAuth";
+import { useLanguage } from "../context/useLanguage";
 import { useBookmarks } from "../hooks/useBookmarks";
 import { useToggleBookmark } from "../hooks/useToggleBookmark";
 import {
@@ -18,6 +19,11 @@ import {
   useStorySkip,
   useToggleStorySkip,
 } from "../hooks/useStoryInteractions";
+import AudioReader from "./AudioReader";
+
+/* =========================================================
+   HELPER FUNCTIONS
+========================================================= */
 
 function getDate(story) {
   return story?.publishedAt || story?.createdAt || null;
@@ -36,22 +42,13 @@ function relativeTime(date) {
   const minutes = Math.floor(diff / 60000);
 
   if (minutes < 1) return "Just now";
-
-  if (minutes < 60) {
-    return `${minutes}m ago`;
-  }
-
+  if (minutes < 60) return `${minutes}m ago`;
+  
   const hours = Math.floor(minutes / 60);
-
-  if (hours < 24) {
-    return `${hours}h ago`;
-  }
-
+  if (hours < 24) return `${hours}h ago`;
+  
   const days = Math.floor(hours / 24);
-
-  if (days < 7) {
-    return `${days}d ago`;
-  }
+  if (days < 7) return `${days}d ago`;
 
   return new Intl.DateTimeFormat("en-IN", {
     day: "numeric",
@@ -61,12 +58,8 @@ function relativeTime(date) {
 
 function formatDate(date) {
   if (!date) return "Recently";
-
   const parsed = new Date(date);
-
-  if (Number.isNaN(parsed.getTime())) {
-    return "Recently";
-  }
+  if (Number.isNaN(parsed.getTime())) return "Recently";
 
   return new Intl.DateTimeFormat("en-IN", {
     day: "numeric",
@@ -75,56 +68,79 @@ function formatDate(date) {
 }
 
 function getSourceName(story) {
-  return (
-    story?.source?.name ||
-    story?.source?.title ||
-    "News source"
-  );
+  return story?.source?.name || story?.source?.title || "News source";
 }
 
 function getTopicName(story) {
-  return (
-    story?.storyTopics?.[0]?.topic?.name ||
-    story?.topic?.name ||
-    "News"
-  );
+  return story?.storyTopics?.[0]?.topic?.name || story?.topic?.name || "News";
 }
 
 function getSourceCount(story) {
   return story?.coverageCount || 1;
 }
 
-function getReadingTime(story) {
-  const text =
-    story?.content ||
-    story?.excerpt ||
-    story?.title ||
-    "";
-
-  const words = text
-    .trim()
-    .split(/\s+/)
-    .filter(Boolean)
-    .length;
-
+function getReadingTime(story, text) {
+  if (typeof story?.readingTimeSeconds === "number") {
+    return Math.max(1, Math.ceil(story.readingTimeSeconds / 60));
+  }
+  const words = String(text || "").trim().split(/\s+/).filter(Boolean).length;
   return Math.max(1, Math.ceil(words / 220));
 }
 
-/*
- * Used only when the backend doesn't have AI key points yet.
- *
- * This is NOT presented as AI-generated information.
- * It simply extracts short sentences from available article text.
- */
-function buildFallbackKeyPoints(story) {
-  const text =
-    story?.excerpt ||
-    story?.content ||
-    "";
-
-  if (!text) {
-    return [];
+function getLatestSummaryRecord(story, preferredLanguage = "en") {
+  if (!Array.isArray(story?.aiSummaries) || !story.aiSummaries.length) {
+    return null;
   }
+  const sorted = [...story.aiSummaries].sort(
+    (a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
+  );
+
+  const localized = sorted.find((s) => s.version && s.version.endsWith(`:${preferredLanguage}`));
+  const english = sorted.find((s) => s.version && s.version.endsWith(`:en`));
+
+  return localized || english || sorted[0] || null;
+}
+
+function getRecommendationReason(story) {
+  const scoring = story.scoring;
+  
+  // Only display reasons if the feed mode was explicitly personalized
+  if (!scoring || scoring.mode !== "personalized") return null;
+
+  const signals = [
+    { type: "topic", value: scoring.topicAffinity || 0 },
+    { type: "source", value: scoring.sourceAffinity || 0 },
+    { type: "reading", value: scoring.readingInterest || 0 },
+    { type: "like", value: scoring.likeSignal || 0 },
+    { type: "bookmark", value: scoring.bookmarkSignal || 0 }
+  ];
+
+  signals.sort((a, b) => b.value - a.value);
+  const topSignal = signals[0];
+
+  if (topSignal.value <= 0.1) return "Top story for you";
+
+  switch (topSignal.type) {
+    case "topic":
+      const topicName = getTopicName(story);
+      return topicName !== "News" ? `Because you follow ${topicName}` : "Based on your topics";
+    case "source":
+      const sourceName = getSourceName(story);
+      return sourceName !== "News source" ? `Because you follow ${sourceName}` : "Based on your sources";
+    case "reading":
+      return "Based on your reading history";
+    case "like":
+      return "Because you liked similar stories";
+    case "bookmark":
+      return "Based on your saved stories";
+    default:
+      return "Recommended for you";
+  }
+}
+
+function buildFallbackKeyPoints(story) {
+  const text = story?.excerpt || story?.content || "";
+  if (!text) return [];
 
   const sentences = text
     .replace(/\s+/g, " ")
@@ -136,46 +152,34 @@ function buildFallbackKeyPoints(story) {
 }
 
 function buildFallbackBrief(story) {
-  if (story?.excerpt) {
-    return story.excerpt;
-  }
-
+  if (story?.excerpt) return story.excerpt;
   if (story?.content) {
-    const clean = story.content
-      .replace(/\s+/g, " ")
-      .trim();
-
-    if (clean.length > 260) {
-      return `${clean.slice(0, 257)}...`;
-    }
-
+    const clean = story.content.replace(/\s+/g, " ").trim();
+    if (clean.length > 260) return `${clean.slice(0, 257)}...`;
     return clean;
   }
-
   return "NewsLensAI is still preparing a concise briefing for this story.";
 }
+
+/* =========================================================
+   SUB-COMPONENTS
+========================================================= */
 
 function FallbackVisual({ story }) {
   return (
     <div className="relative h-full w-full overflow-hidden bg-gradient-to-br from-amber-50 via-slate-100 to-teal-50 dark:from-slate-800 dark:via-slate-900 dark:to-slate-800">
-
       <div className="absolute -right-16 -top-20 h-64 w-64 rounded-full border border-amber-500/10" />
-
       <div className="absolute right-8 top-12 h-44 w-44 rounded-full border border-amber-500/10" />
-
       <div className="absolute -bottom-24 -left-16 h-64 w-64 rounded-full border border-teal-500/10" />
 
       <div className="absolute inset-0 flex items-center justify-center">
         <div className="text-center">
-
           <div className="mx-auto flex h-14 w-14 items-center justify-center rounded-2xl border border-white/80 bg-white/80 shadow-sm backdrop-blur dark:border-white/10 dark:bg-slate-800/80">
             <Globe2 className="h-6 w-6 text-signal" />
           </div>
-
           <p className="mt-3 text-[10px] font-bold uppercase tracking-[0.2em] text-signal">
             {getTopicName(story)}
           </p>
-
           <p className="mt-1 text-xs font-semibold text-slate-500 dark:text-slate-400">
             NewsLensAI briefing
           </p>
@@ -196,16 +200,15 @@ function StoryImage({ story }) {
       alt=""
       loading="lazy"
       className="h-full w-full object-cover transition duration-500 group-hover:scale-[1.02]"
+      onError={(e) => {
+        e.currentTarget.style.display = "none";
+        e.currentTarget.nextElementSibling?.classList.remove("hidden");
+      }}
     />
   );
 }
 
-function ActionButton({
-  children,
-  onClick,
-  active = false,
-  label,
-}) {
+function ActionButton({ children, onClick, active = false, label }) {
   return (
     <button
       type="button"
@@ -219,7 +222,7 @@ function ActionButton({
         "inline-flex h-9 items-center gap-2 rounded-xl px-3 text-xs font-semibold transition",
         active
           ? "bg-signal/10 text-signal"
-          : "text-slate-500 hover:bg-shell hover:text-slate-900 dark:text-slate-400 dark:hover:text-white",
+          : "text-slate-500 hover:bg-shell hover:text-slate-900 dark:text-slate-400 dark:hover:bg-slate-800 dark:hover:text-white",
       ].join(" ")}
     >
       {children}
@@ -227,30 +230,23 @@ function ActionButton({
   );
 }
 
+/* =========================================================
+   MAIN COMPONENT
+========================================================= */
+
 function StoryCard({ story }) {
   const { user } = useAuth();
-
+  const { language } = useLanguage();
   const isSignedIn = Boolean(user);
 
-  const { data: feedback } = useStoryFeedback(story.id, {
-    enabled: isSignedIn,
-  });
-
+  const { data: feedback } = useStoryFeedback(story.id, { enabled: isSignedIn });
   const setFeedback = useSetStoryFeedback(story.id);
 
-  const { data: isSkipped } = useStorySkip(story.id, {
-    enabled: isSignedIn,
-  });
-
+  const { data: isSkipped } = useStorySkip(story.id, { enabled: isSignedIn });
   const toggleSkip = useToggleStorySkip(story.id);
 
-  const { data: bookmarkedStories = [] } = useBookmarks({
-    enabled: isSignedIn,
-  });
-
+  const { data: bookmarkedStories = [] } = useBookmarks({ enabled: isSignedIn });
   const toggleBookmark = useToggleBookmark();
-
-  const aiSummary = story?.aiSummaries?.[0];
 
   const isBookmarked = bookmarkedStories.some(
     (bookmark) =>
@@ -259,88 +255,64 @@ function StoryCard({ story }) {
       bookmark.story?.id === story.id
   );
 
+  // Derived Data
+  const aiSummary = getLatestSummaryRecord(story, language);
   const topic = getTopicName(story);
   const source = getSourceName(story);
   const date = getDate(story);
-
   const sourceCount = getSourceCount(story);
-  const minutesToRead = getReadingTime(story);
-
+  const bias = story?.biasAnalysis;
   const brief = aiSummary?.summary || buildFallbackBrief(story);
+  const minutesToRead = getReadingTime(story, story.content || story.excerpt || brief);
+  const recommendationReason = getRecommendationReason(story);
 
   const aiKeyPoints = Array.isArray(aiSummary?.keyPoints)
     ? aiSummary.keyPoints.filter(Boolean).slice(0, 3)
     : [];
+  const keyPoints = aiKeyPoints.length > 0 ? aiKeyPoints : buildFallbackKeyPoints(story);
 
-  const fallbackKeyPoints = buildFallbackKeyPoints(story);
-
-  const keyPoints =
-    aiKeyPoints.length > 0
-      ? aiKeyPoints
-      : fallbackKeyPoints;
-
+  // Handlers
   const handleFeedback = (value) => {
     if (!isSignedIn) return;
-
-    setFeedback.mutate(
-      feedback === value ? null : value
-    );
+    setFeedback.mutate(feedback === value ? null : value);
   };
 
   const handleBookmark = () => {
     if (!isSignedIn) return;
-
-    toggleBookmark.mutate({
-      storyId: story.id,
-      isBookmarked,
-    });
+    toggleBookmark.mutate({ storyId: story.id, isBookmarked });
   };
 
   const handleSkip = () => {
     if (!isSignedIn) return;
-
     toggleSkip.mutate();
   };
 
   const handleShare = async () => {
-    const url = `${window.location.origin}/stories/${story.id}`;
-
+    const url = `${window.location.origin}/story/${story.id}`;
     try {
       if (navigator.share) {
-        await navigator.share({
-          title: story.title,
-          url,
-        });
-
+        await navigator.share({ title: story.title, url });
         return;
       }
-
       await navigator.clipboard?.writeText(url);
     } catch {
-      // User cancelled native sharing.
+      // User cancelled native sharing
     }
   };
 
   return (
-    <article
-      className="
-        group
-        overflow-hidden
-        rounded-[28px]
-        border
-        border-stroke
-        bg-card
-        shadow-[0_14px_45px_rgba(15,23,42,0.08)]
-      "
-    >
-
+    <article className="group overflow-hidden rounded-[28px] border border-stroke bg-card shadow-[0_14px_45px_rgba(15,23,42,0.08)] dark:border-white/[0.08]">
+      
       {/* ─────────────────────────────
-          IMAGE
+         IMAGE
       ───────────────────────────── */}
-
       <div className="relative h-[30vh] min-h-[220px] max-h-[300px] overflow-hidden sm:h-[32vh]">
-
         <StoryImage story={story} />
+        
+        {/* Fallback container if image fails to load */}
+        <div className="hidden absolute inset-0">
+          <FallbackVisual story={story} />
+        </div>
 
         <div className="pointer-events-none absolute inset-0 bg-gradient-to-b from-black/25 via-transparent to-black/15" />
 
@@ -360,64 +332,46 @@ function StoryCard({ story }) {
       </div>
 
       {/* ─────────────────────────────
-          CONTENT
+         CONTENT
       ───────────────────────────── */}
-
       <div className="px-5 pb-5 pt-5 sm:px-6 sm:pb-6">
+        
+        {/* Recommendation Reason (Personalization) */}
+        {recommendationReason && (
+          <div className="mb-3 flex items-center gap-1.5 text-[10px] font-bold uppercase tracking-[0.14em] text-amber-600 dark:text-amber-400">
+            <Sparkles size={12} />
+            <span>{recommendationReason}</span>
+          </div>
+        )}
 
         {/* Source / topic / date */}
-
         <div className="flex flex-wrap items-center gap-2 text-[10px] font-bold uppercase tracking-[0.14em]">
-
-          <span className="text-signal">
-            {topic}
-          </span>
-
-          <span className="text-slate-300 dark:text-slate-600">
-            •
-          </span>
-
-          <span className="text-slate-500 dark:text-slate-400">
-            {source}
-          </span>
-
+          <span className="text-signal">{topic}</span>
+          <span className="text-slate-300 dark:text-slate-600">•</span>
+          <span className="text-slate-500 dark:text-slate-400">{source}</span>
           {date && (
             <>
-              <span className="text-slate-300 dark:text-slate-600">
-                •
-              </span>
-
-              <span className="text-slate-400 dark:text-slate-500">
-                {formatDate(date)}
-              </span>
+              <span className="text-slate-300 dark:text-slate-600">•</span>
+              <span className="text-slate-400 dark:text-slate-500">{formatDate(date)}</span>
             </>
           )}
         </div>
 
         {/* Headline */}
-
-        <h2 className="mt-3 text-[24px] font-extrabold leading-[1.16] tracking-[-0.03em] text-ink sm:text-[28px]">
+        <h2 className="mt-3 text-[24px] font-extrabold leading-[1.16] tracking-[-0.03em] text-ink sm:text-[28px] dark:text-white">
           {story.title}
         </h2>
 
         {/* ─────────────────────────────
             AI BRIEF
         ───────────────────────────── */}
-
-        <section className="mt-5 rounded-2xl bg-shell/80 p-4 sm:p-5">
-
+        <section className="mt-5 rounded-2xl bg-shell/80 p-4 sm:p-5 dark:bg-slate-800/50">
           <div className="flex items-center gap-2">
-
             <Sparkles className="h-4 w-4 text-signal" />
-
             <p className="text-[10px] font-bold uppercase tracking-[0.18em] text-signal">
-              {aiSummary?.summary
-                ? "AI Brief"
-                : "Brief"}
+              {aiSummary?.summary ? "AI Brief" : "Brief"}
             </p>
-
           </div>
-
           <p className="mt-2 line-clamp-4 text-sm leading-6 text-slate-600 dark:text-slate-300">
             {brief}
           </p>
@@ -426,29 +380,20 @@ function StoryCard({ story }) {
         {/* ─────────────────────────────
             KEY POINTS
         ───────────────────────────── */}
-
         {keyPoints.length > 0 && (
           <section className="mt-5">
-
             <p className="text-[10px] font-bold uppercase tracking-[0.18em] text-slate-400 dark:text-slate-500">
               Key takeaways
             </p>
-
             <div className="mt-3 space-y-2.5">
-
               {keyPoints.map((point, index) => (
-                <div
-                  key={`${story.id}-point-${index}`}
-                  className="flex gap-3"
-                >
+                <div key={`${story.id}-point-${index}`} className="flex gap-3">
                   <span className="mt-[7px] h-1.5 w-1.5 shrink-0 rounded-full bg-signal" />
-
                   <p className="line-clamp-2 text-xs leading-5 text-slate-600 dark:text-slate-300">
                     {point}
                   </p>
                 </div>
               ))}
-
             </div>
           </section>
         )}
@@ -456,49 +401,45 @@ function StoryCard({ story }) {
         {/* ─────────────────────────────
             WHY IT MATTERS
         ───────────────────────────── */}
-
         {aiSummary?.whyItMatters && (
           <section className="mt-5">
-
             <p className="text-[10px] font-bold uppercase tracking-[0.18em] text-slate-400 dark:text-slate-500">
               Why it matters
             </p>
-
             <p className="mt-2 text-xs leading-5 text-slate-600 dark:text-slate-300">
               {aiSummary.whyItMatters}
             </p>
-
           </section>
         )}
 
         {/* ─────────────────────────────
             METADATA
         ───────────────────────────── */}
-
         <div className="mt-5 flex flex-wrap items-center gap-x-3 gap-y-2 text-xs text-slate-500 dark:text-slate-400">
-
           <span>
-            {sourceCount}{" "}
-            {sourceCount === 1 ? "source" : "sources"}
+            {sourceCount} {sourceCount === 1 ? "source" : "sources"}
           </span>
-
           <span>•</span>
-
           <span className="inline-flex items-center gap-1.5">
             <Clock3 className="h-3.5 w-3.5" />
-
             {minutesToRead} min read
           </span>
-
+          {bias?.tone && (
+            <>
+              <span>•</span>
+              <span className="capitalize">{bias.tone} tone</span>
+            </>
+          )}
         </div>
 
         {/* ─────────────────────────────
             ACTIONS
         ───────────────────────────── */}
-
-        <div className="mt-4 flex items-center justify-between border-t border-stroke pt-3">
-
-          <div className="flex items-center">
+        <div className="mt-4 flex items-center justify-between border-t border-stroke pt-3 dark:border-white/10">
+          <div className="flex flex-wrap items-center gap-1">
+            
+            {/* Audio Reader Integration */}
+            <AudioReader text={brief} compact={true} />
 
             {isSignedIn && (
               <>
@@ -507,45 +448,29 @@ function StoryCard({ story }) {
                   active={feedback === "LIKE"}
                   onClick={() => handleFeedback("LIKE")}
                 >
-                  <span className="text-base">
-                    ♥
-                  </span>
+                  <span className="text-base">♥</span>
                 </ActionButton>
-
                 <ActionButton
                   label="Less like this"
                   active={feedback === "DISLIKE"}
                   onClick={() => handleFeedback("DISLIKE")}
                 >
-                  <span className="text-base">
-                    ↓
-                  </span>
+                  <span className="text-base">↓</span>
                 </ActionButton>
               </>
             )}
 
-            <ActionButton
-              label="Share story"
-              onClick={handleShare}
-            >
+            <ActionButton label="Share story" onClick={handleShare}>
               <Share2 className="h-4 w-4" />
             </ActionButton>
 
             {isSignedIn && (
               <ActionButton
-                label={
-                  isBookmarked
-                    ? "Remove bookmark"
-                    : "Save story"
-                }
+                label={isBookmarked ? "Remove bookmark" : "Save story"}
                 active={isBookmarked}
                 onClick={handleBookmark}
               >
-                {isBookmarked ? (
-                  <BookmarkCheck className="h-4 w-4" />
-                ) : (
-                  <Bookmark className="h-4 w-4" />
-                )}
+                {isBookmarked ? <BookmarkCheck className="h-4 w-4" /> : <Bookmark className="h-4 w-4" />}
               </ActionButton>
             )}
 
@@ -558,41 +483,19 @@ function StoryCard({ story }) {
                 <MoreHorizontal className="h-4 w-4" />
               </ActionButton>
             )}
-
           </div>
-
         </div>
 
         {/* ─────────────────────────────
             PRIMARY ACTION
         ───────────────────────────── */}
-
         <Link
-          to={`/stories/${story.id}`}
-          className="
-            mt-3
-            flex
-            h-12
-            items-center
-            justify-center
-            gap-2
-            rounded-xl
-            bg-signal
-            text-sm
-            font-bold
-            text-white
-            transition
-            hover:opacity-90
-            active:scale-[0.99]
-          "
+          to={`/story/${story.id}`}
+          className="mt-3 flex h-12 items-center justify-center gap-2 rounded-xl bg-signal text-sm font-bold text-white transition hover:opacity-90 active:scale-[0.99]"
         >
           Understand this story
-
-          <span aria-hidden="true">
-            →
-          </span>
+          <span aria-hidden="true">→</span>
         </Link>
-
       </div>
     </article>
   );

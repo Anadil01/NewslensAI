@@ -1,1013 +1,42 @@
-import { useEffect, useRef } from "react";
-import { Link, useParams } from "react-router-dom";
-
-import LoadingSpinner from "../components/LoadingSpinner";
-import StoryActions from "../components/StoryActions";
-
+import { Link } from "react-router-dom";
 import {
-  useStory,
-  useCluster,
-  useRelatedStories,
-} from "../hooks/useStory";
-import { useRecordReading } from "../hooks/useStoryInteractions";
+  Bookmark,
+  BookmarkCheck,
+  Clock3,
+  Globe2,
+  MoreHorizontal,
+  Share2,
+  Sparkles,
+} from "lucide-react";
 
-function Story() {
-  const { id } = useParams();
+import { useAuth } from "../context/useAuth";
+import { useBookmarks } from "../hooks/useBookmarks";
+import { useToggleBookmark } from "../hooks/useToggleBookmark";
+import {
+  useStoryFeedback,
+  useSetStoryFeedback,
+  useStorySkip,
+  useToggleStorySkip,
+} from "../hooks/useStoryInteractions";
+import { useLanguage } from "../context/useLanguage";
 
-  /*
-   * Data fetching lives in ../hooks/useStory so the request paths and
-   * payload unwrapping stay in one place. This page only renders.
-   */
+function getDate(story) {
+  return story?.publishedAt || story?.createdAt || null;
+}
 
-  const {
-    data: story,
-    isLoading: storyLoading,
-    isError: storyError,
-    error,
-  } = useStory(id);
+function relativeTime(date) {
+  if (!date) return "Recently";
 
-  const {
-    data: cluster,
-    isLoading: clusterLoading,
-    isError: clusterError,
-  } = useCluster(story?.clusterId);
+  const timestamp = new Date(date).getTime();
 
-  const {
-    data: relatedStories = [],
-    isLoading: relatedLoading,
-  } = useRelatedStories(id);
-
-  /*
-   * Reading activity feeds the recommendation signals. It is measured as
-   * time on page and reported once, when the reader leaves the story.
-   */
-  const recordReading = useRecordReading(id);
-
-  /*
-   * The timer effect must not re-run when the mutation object changes, or
-   * it would restart the clock mid-read. Keeping the latest `mutate` in a
-   * ref (updated in its own effect, never during render) lets the timer
-   * depend on `id` alone.
-   */
-  const recordReadingRef = useRef(recordReading.mutate);
-
-  useEffect(() => {
-    recordReadingRef.current = recordReading.mutate;
-  }, [recordReading.mutate]);
-
-  useEffect(() => {
-
-    if (!id) {
-      return;
-    }
-
-    const openedAt = Date.now();
-
-    return () => {
-      const durationSeconds = (Date.now() - openedAt) / 1000;
-
-      // Ignore accidental opens; anything shorter is noise, not a read.
-      if (durationSeconds < 3) {
-        return;
-      }
-
-      recordReadingRef.current({
-        durationSeconds,
-        completed: durationSeconds >= 30,
-      });
-    };
-  }, [id]);
-
-
-  /*
-   * --------------------------------------------------
-   * LOADING
-   * --------------------------------------------------
-   */
-  if (storyLoading) {
-    return <LoadingSpinner fullScreen />;
+  if (Number.isNaN(timestamp)) {
+    return "Recently";
   }
 
-  /*
-   * --------------------------------------------------
-   * ERROR
-   * --------------------------------------------------
-   */
-  if (storyError) {
-    return (
-      <section className="mx-auto max-w-3xl rounded-[32px] border border-red-200 bg-white/80 p-8 shadow-sm dark:border-red-500/20 dark:bg-slate-900/80">
-        <p className="text-sm font-bold uppercase tracking-[0.16em] text-red-600 dark:text-red-400">
-          Story unavailable
-        </p>
-
-        <h1 className="mt-3 text-3xl font-black tracking-tight text-slate-950 dark:text-white">
-          We couldn't load this story.
-        </h1>
-
-        <p className="mt-3 text-sm leading-6 text-slate-500 dark:text-slate-400">
-          {error?.response?.data?.message ||
-            error?.message ||
-            "The story could not be loaded."}
-        </p>
-
-        <Link
-          to="/"
-          className="mt-6 inline-flex items-center gap-2 rounded-full bg-slate-950 px-5 py-3 text-sm font-bold text-white transition hover:bg-slate-800 dark:bg-white dark:text-slate-950"
-        >
-          <ArrowLeftIcon />
-          Back to briefing
-        </Link>
-      </section>
-    );
-  }
-
-  if (!story) {
-    return null;
-  }
-
-  const primaryTopic = getPrimaryTopic(story);
-  const aiSummary = getLatestSummaryRecord(story);
-  const summary = aiSummary?.summary || null;
-  const keyPoints = getKeyPoints(aiSummary);
-  const whyItMatters = getStructuredText(aiSummary?.whyItMatters);
-  const whatNext = getStructuredText(aiSummary?.whatNext);
-  const coverageStories = getCoverageStories(
-    cluster,
-    story.id
-  );
-
-  const sourceCount = getSourceCount(cluster);
-  const coverageCount = cluster?.stories?.length || 1;
-  const readingTime = estimateReadingTime(
-    story.content || story.excerpt || summary
-  );
-  const timeline = buildCoverageTimeline(story, cluster?.stories || []);
-
-  return (
-    <div className="mx-auto max-w-[720px] space-y-10">
-
-      {/* --------------------------------------------------
-          BACK
-      -------------------------------------------------- */}
-
-      <Link
-        to="/"
-        className="inline-flex items-center gap-2 text-sm font-semibold text-slate-500 transition hover:text-slate-950 dark:text-slate-400 dark:hover:text-white"
-      >
-        <ArrowLeftIcon />
-        Back to briefing
-      </Link>
-
-      {/* --------------------------------------------------
-          STORY HEADER
-      -------------------------------------------------- */}
-
-      <section className="overflow-hidden rounded-[28px] border border-stroke bg-white/80 shadow-sm backdrop-blur-xl dark:border-white/10 dark:bg-slate-900/75">
-
-        <StoryVisual story={story} />
-
-        <div className="p-5 sm:p-7">
-
-        <div className="flex flex-wrap items-center gap-2">
-
-          {primaryTopic && (
-            <span className="rounded-full bg-amber-50 px-3 py-1.5 text-xs font-bold uppercase tracking-[0.16em] text-amber-700 dark:bg-amber-500/10 dark:text-amber-300">
-              {primaryTopic}
-            </span>
-          )}
-
-          {story.clusterId && (
-            <span className="rounded-full border border-teal-200 bg-teal-50 px-3 py-1.5 text-xs font-bold text-teal-700 dark:border-teal-500/20 dark:bg-teal-500/10 dark:text-teal-300">
-              Multi-source story
-            </span>
-          )}
-
-          {story.contentStatus && (
-            <span className="rounded-full border border-slate-200 bg-white px-3 py-1.5 text-xs font-semibold text-slate-500 dark:border-white/10 dark:bg-slate-800 dark:text-slate-400">
-              {formatContentStatus(story.contentStatus)}
-            </span>
-          )}
-        </div>
-
-        <h1 className="mt-6 max-w-5xl text-3xl font-black leading-[1.08] tracking-tight text-slate-950 sm:text-4xl lg:text-5xl dark:text-white">
-          {story.title}
-        </h1>
-
-        {story.excerpt && (
-          <p className="mt-6 max-w-4xl text-base leading-8 text-slate-600 sm:text-lg dark:text-slate-300">
-            {story.excerpt}
-          </p>
-        )}
-
-        <div className="mt-7 flex flex-wrap items-center gap-x-5 gap-y-3 text-sm text-slate-500 dark:text-slate-400">
-
-          {story.source?.name && (
-            <span className="font-bold text-slate-800 dark:text-slate-200">
-              {story.source.name}
-            </span>
-          )}
-
-          {story.author && (
-            <span>
-              By {story.author}
-            </span>
-          )}
-
-          {story.publishedAt && (
-            <span>
-              {formatDate(story.publishedAt)}
-            </span>
-          )}
-
-          {story.points != null && (
-            <span>
-              {story.points} points
-            </span>
-          )}
-        </div>
-
-          <div className="mt-8 border-t border-stroke pt-6 dark:border-white/10">
-            <StoryActions storyId={story.id} />
-          </div>
-        </div>
-      </section>
-
-      {/* --------------------------------------------------
-          NEWSLENS INTELLIGENCE
-      -------------------------------------------------- */}
-
-      <section>
-        <SectionHeading
-          eyebrow="NewsLens intelligence"
-          title="Understand the story"
-          description="Start with the important context before comparing individual coverage."
-        />
-
-        <div className="mt-5 rounded-[30px] border border-stroke bg-white/75 p-6 shadow-sm backdrop-blur-xl sm:p-8 dark:border-white/10 dark:bg-slate-900/70">
-
-          <div className="flex gap-4">
-
-            <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl bg-amber-50 text-amber-600 dark:bg-amber-500/10 dark:text-amber-300">
-              ✦
-            </div>
-
-            <div className="min-w-0">
-
-              <p className="text-xs font-bold uppercase tracking-[0.18em] text-amber-600 dark:text-amber-400">
-                AI brief
-              </p>
-
-              {summary ? (
-                <p className="mt-3 max-w-4xl text-base leading-8 text-slate-700 dark:text-slate-200">
-                  {summary}
-                </p>
-              ) : (
-                <p className="mt-3 max-w-4xl text-base leading-8 text-slate-500 dark:text-slate-400">
-                  An AI-generated brief is not available for this story yet.
-                </p>
-              )}
-
-              {keyPoints.length || whyItMatters || whatNext ? (
-                <div className="mt-6 space-y-5 border-t border-stroke pt-5 dark:border-white/10">
-                  {keyPoints.length ? (
-                    <div>
-                      <p className="text-xs font-bold uppercase tracking-[0.16em] text-slate-400">
-                        Key points
-                      </p>
-                      <ul className="mt-3 space-y-2.5">
-                        {keyPoints.map((point) => (
-                          <li key={point} className="flex gap-3 text-sm leading-6 text-slate-600 dark:text-slate-300">
-                            <span className="mt-2 h-1.5 w-1.5 shrink-0 rounded-full bg-amber-500 dark:bg-amber-400" />
-                            <span>{point}</span>
-                          </li>
-                        ))}
-                      </ul>
-                    </div>
-                  ) : null}
-
-                  {whyItMatters || whatNext ? (
-                    <div className="grid gap-3 sm:grid-cols-2">
-                      {whyItMatters ? (
-                        <StructuredInsight
-                          label="Why it matters"
-                          text={whyItMatters}
-                        />
-                      ) : null}
-
-                      {whatNext ? (
-                        <StructuredInsight
-                          label="What to watch next"
-                          text={whatNext}
-                        />
-                      ) : null}
-                    </div>
-                  ) : null}
-                </div>
-              ) : null}
-
-            </div>
-          </div>
-        </div>
-
-        <div className="mt-5 flex flex-wrap items-center gap-x-4 gap-y-2 border-t border-stroke pt-5 text-sm font-semibold text-slate-500 dark:border-white/10 dark:text-slate-400">
-          <span>{readingTime} min read</span>
-          <span aria-hidden="true">·</span>
-          <span>
-            {story.clusterId && sourceCount > 1
-              ? `${sourceCount} sources`
-              : "1 source"}
-          </span>
-          {story.clusterId ? (
-            <>
-              <span aria-hidden="true">·</span>
-              <span>{coverageCount} reports</span>
-            </>
-          ) : null}
-        </div>
-      </section>
-
-      {/* --------------------------------------------------
-          MULTI-SOURCE COVERAGE
-      -------------------------------------------------- */}
-
-      <section>
-        <SectionHeading
-          eyebrow="Multi-source coverage"
-          title="How different sources cover it"
-          description="Compare reporting about the same event without opening every article."
-        />
-
-        {clusterLoading ? (
-          <LoadingBlock text="Loading coverage..." />
-        ) : clusterError ? (
-          <EmptyBlock>
-            Coverage information could not be loaded.
-          </EmptyBlock>
-        ) : !story.clusterId ? (
-          <EmptyBlock>
-            This story has not been connected to a story cluster yet.
-          </EmptyBlock>
-        ) : coverageStories.length === 0 ? (
-          <EmptyBlock>
-            No additional coverage is available for this story yet.
-          </EmptyBlock>
-        ) : (
-          <>
-            <SourceTabs stories={[story, ...coverageStories]} />
-
-            <div className="mt-5 grid gap-5">
-              {coverageStories.map((item) => (
-                <CoverageCard key={item.id} story={item} />
-              ))}
-            </div>
-          </>
-        )}
-      </section>
-
-      {/* --------------------------------------------------
-          SOURCE SIGNALS
-      -------------------------------------------------- */}
-
-      <section>
-        <SectionHeading
-          eyebrow="Perspectives"
-          title="Source context and signals"
-          description="Review the source information and bias signals NewsLens has available for this coverage."
-        />
-
-        {clusterLoading ? (
-          <LoadingBlock text="Loading source information..." />
-        ) : !story.clusterId ? (
-          <SourceCard story={story} />
-        ) : (
-          <SourceOverview stories={cluster?.stories || []} />
-        )}
-      </section>
-
-      <section>
-        <SectionHeading
-          eyebrow="Story timeline"
-          title="Coverage as it developed"
-          description="Built from the reporting currently connected to this story."
-        />
-
-        <StoryTimeline events={timeline} />
-      </section>
-
-      {story.canonicalUrl ? (
-        <a
-          href={story.canonicalUrl}
-          target="_blank"
-          rel="noreferrer"
-          className="flex items-center justify-between rounded-[24px] border border-stroke bg-white/75 px-5 py-4 text-sm font-bold text-slate-800 transition hover:border-amber-300 hover:text-amber-700 dark:border-white/10 dark:bg-slate-900/70 dark:text-slate-100 dark:hover:text-amber-400"
-        >
-          Read original article
-          <ExternalLinkIcon />
-        </a>
-      ) : null}
-
-      {/* --------------------------------------------------
-          RELATED STORIES
-      -------------------------------------------------- */}
-
-      <section>
-        <SectionHeading
-          eyebrow="Keep exploring"
-          title="Related stories"
-          description="Other stories NewsLensAI considers connected to this story."
-        />
-
-        {relatedLoading ? (
-          <LoadingBlock text="Finding related stories..." />
-        ) : relatedStories.length === 0 ? (
-          <EmptyBlock>
-            There are no additional related stories available yet.
-          </EmptyBlock>
-        ) : (
-          <div className="mt-5 divide-y divide-slate-200 overflow-hidden rounded-[28px] border border-stroke bg-white/75 dark:divide-white/10 dark:border-white/10 dark:bg-slate-900/70">
-
-            {relatedStories.map((item) => (
-              <RelatedStoryRow
-                key={item.id}
-                story={item}
-              />
-            ))}
-
-          </div>
-        )}
-      </section>
-
-    </div>
-  );
-}
-
-function StoryVisual({ story }) {
-  const imageUrl = story?.imageUrl || story?.image_url;
-  const sourceName = story?.source?.name || "NewsLensAI";
-  const initials = sourceName
-    .split(" ")
-    .filter(Boolean)
-    .slice(0, 2)
-    .map((word) => word[0])
-    .join("")
-    .toUpperCase();
-
-  return (
-    <div className="relative aspect-[4/3] overflow-hidden bg-slate-100 dark:bg-slate-800">
-      {imageUrl ? (
-        <img
-          src={imageUrl}
-          alt={story.title}
-          loading="eager"
-          className="relative z-10 h-full w-full object-cover"
-          onError={(event) => {
-            event.currentTarget.style.display = "none";
-          }}
-        />
-      ) : null}
-
-      <div className="absolute inset-0 flex items-center justify-center bg-[radial-gradient(circle_at_top_right,rgba(20,184,166,0.24),transparent_35%),radial-gradient(circle_at_bottom_left,rgba(245,158,11,0.22),transparent_40%)] dark:bg-[radial-gradient(circle_at_top_right,rgba(45,212,191,0.15),transparent_35%),radial-gradient(circle_at_bottom_left,rgba(251,191,36,0.12),transparent_40%)]">
-        <span className="flex h-20 w-20 items-center justify-center rounded-3xl border border-white/70 bg-white/75 text-lg font-black text-slate-700 shadow-lg backdrop-blur dark:border-white/10 dark:bg-slate-950/40 dark:text-white">
-          {initials || "NL"}
-        </span>
-      </div>
-
-      <div className="pointer-events-none absolute inset-x-0 bottom-0 z-20 h-24 bg-gradient-to-t from-black/35 to-transparent" />
-    </div>
-  );
-}
-
-function StructuredInsight({ label, text }) {
-  return (
-    <div className="rounded-2xl border border-slate-200/70 bg-slate-50 p-4 dark:border-white/[0.06] dark:bg-slate-800/60">
-      <p className="text-[11px] font-extrabold uppercase tracking-[0.14em] text-teal-700 dark:text-teal-300">
-        {label}
-      </p>
-      <p className="mt-2 text-sm leading-6 text-slate-600 dark:text-slate-300">
-        {text}
-      </p>
-    </div>
-  );
-}
-
-function SourceTabs({ stories }) {
-  const sources = uniqueSources(stories);
-
-  if (!sources.length) {
-    return null;
-  }
-
-  return (
-    <div className="mt-5 flex gap-2 overflow-x-auto pb-1 scrollbar-none" aria-label="Sources covering this story">
-      {sources.map((source) => (
-        <span
-          key={source.id}
-          className="shrink-0 rounded-full border border-teal-200 bg-teal-50 px-3 py-1.5 text-xs font-bold text-teal-700 dark:border-teal-500/20 dark:bg-teal-500/10 dark:text-teal-300"
-        >
-          {source.name}
-        </span>
-      ))}
-    </div>
-  );
-}
-
-function StoryTimeline({ events }) {
-  if (!events.length) {
-    return (
-      <EmptyBlock>
-        A coverage timeline will appear as dated reporting becomes available.
-      </EmptyBlock>
-    );
-  }
-
-  return (
-    <ol className="mt-5 space-y-0 rounded-[28px] border border-stroke bg-white/75 p-5 dark:border-white/10 dark:bg-slate-900/70">
-      {events.map((event, index) => (
-        <li key={event.id} className="relative flex gap-4 pb-6 last:pb-0">
-          <div className="flex w-4 shrink-0 flex-col items-center">
-            <span className="mt-1.5 h-3 w-3 rounded-full bg-teal-600 ring-4 ring-teal-100 dark:bg-teal-400 dark:ring-teal-500/10" />
-            {index < events.length - 1 ? (
-              <span className="mt-2 w-px flex-1 bg-slate-200 dark:bg-white/10" />
-            ) : null}
-          </div>
-
-          <div className="min-w-0">
-            <p className="text-xs font-bold uppercase tracking-[0.14em] text-teal-700 dark:text-teal-400">
-              {formatDate(event.date)}
-            </p>
-            <h3 className="mt-1 text-sm font-bold text-slate-900 dark:text-white">
-              Reported by {event.sourceName}
-            </h3>
-            <p className="mt-1 line-clamp-2 text-sm leading-6 text-slate-500 dark:text-slate-400">
-              {event.title}
-            </p>
-          </div>
-        </li>
-      ))}
-    </ol>
-  );
-}
-
-/* =========================================================
-   COVERAGE CARD
-========================================================= */
-
-function CoverageCard({ story }) {
-  const summary = getLatestSummary(story);
-
-  return (
-    <article className="rounded-[28px] border border-stroke bg-white/75 p-6 shadow-sm transition hover:-translate-y-0.5 hover:shadow-md dark:border-white/10 dark:bg-slate-900/70">
-
-      <div className="flex items-start justify-between gap-4">
-
-        <span className="rounded-full bg-teal-50 px-3 py-1.5 text-xs font-bold text-teal-700 dark:bg-teal-500/10 dark:text-teal-300">
-          {story.source?.name || "Unknown source"}
-        </span>
-
-        {story.publishedAt && (
-          <span className="shrink-0 text-xs font-medium text-slate-400">
-            {formatRelativeTime(story.publishedAt)}
-          </span>
-        )}
-
-      </div>
-
-      <h3 className="mt-5 text-lg font-bold leading-7 text-slate-950 dark:text-white">
-        {story.title}
-      </h3>
-
-      {summary && (
-        <div className="mt-4 rounded-2xl bg-slate-50 p-4 dark:bg-slate-800/70">
-
-          <p className="text-xs font-bold uppercase tracking-[0.14em] text-amber-600 dark:text-amber-400">
-            AI brief
-          </p>
-
-          <p className="mt-2 text-sm leading-6 text-slate-600 dark:text-slate-300">
-            {summary}
-          </p>
-
-        </div>
-      )}
-
-      {!summary && story.excerpt && (
-        <p className="mt-4 line-clamp-3 text-sm leading-6 text-slate-500 dark:text-slate-400">
-          {story.excerpt}
-        </p>
-      )}
-
-      {story.canonicalUrl && (
-        <a
-          href={story.canonicalUrl}
-          target="_blank"
-          rel="noreferrer"
-          className="mt-5 inline-flex items-center gap-2 text-sm font-bold text-amber-600 transition hover:text-amber-700 dark:text-amber-400"
-        >
-          Read coverage
-          <ExternalLinkIcon />
-        </a>
-      )}
-
-    </article>
-  );
-}
-
-/* =========================================================
-   SOURCE OVERVIEW
-========================================================= */
-
-function SourceOverview({ stories }) {
-  if (!stories.length) {
-    return (
-      <EmptyBlock>
-        No source information is available yet.
-      </EmptyBlock>
-    );
-  }
-
-  const sources = uniqueSources(stories);
-
-  return (
-    <div className="mt-5 grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-
-      {sources.map((source) => (
-        <div
-          key={source.id}
-          className="rounded-[26px] border border-stroke bg-white/75 p-5 shadow-sm dark:border-white/10 dark:bg-slate-900/70"
-        >
-
-          <p className="text-lg font-black text-slate-950 dark:text-white">
-            {source.name}
-          </p>
-
-          {source.slug && (
-            <p className="mt-1 text-xs text-slate-400">
-              {source.slug}
-            </p>
-          )}
-
-          <div className="mt-5 space-y-3">
-
-            <SourceDetail
-              label="Political lean"
-              value={formatEnum(source.politicalLean)}
-            />
-
-            <SourceDetail
-              label="Reliability"
-              value={
-                source.reliabilityScore != null
-                  ? formatScore(source.reliabilityScore)
-                  : "Not available"
-              }
-            />
-
-            <SourceDetail
-              label="Articles in cluster"
-              value={
-                stories.filter(
-                  (story) =>
-                    story.sourceId === source.id
-                ).length
-              }
-            />
-
-          </div>
-
-        </div>
-      ))}
-
-    </div>
-  );
-}
-
-function SourceCard({ story }) {
-  const source = story.source;
-
-  if (!source) {
-    return (
-      <EmptyBlock>
-        Source information is not available.
-      </EmptyBlock>
-    );
-  }
-
-  return (
-    <div className="mt-5 max-w-md">
-      <div className="rounded-[26px] border border-stroke bg-white/75 p-5 shadow-sm dark:border-white/10 dark:bg-slate-900/70">
-
-        <p className="text-lg font-black text-slate-950 dark:text-white">
-          {source.name}
-        </p>
-
-        <p className="mt-1 text-xs text-slate-400">
-          {source.slug}
-        </p>
-
-        <div className="mt-5 space-y-3">
-
-          <SourceDetail
-            label="Political lean"
-            value={formatEnum(source.politicalLean)}
-          />
-
-          <SourceDetail
-            label="Reliability"
-            value={
-              source.reliabilityScore != null
-                ? formatScore(source.reliabilityScore)
-                : "Not available"
-            }
-          />
-
-        </div>
-      </div>
-    </div>
-  );
-}
-
-function SourceDetail({ label, value }) {
-  return (
-    <div className="flex items-center justify-between gap-4 border-b border-stroke pb-3 last:border-b-0 last:pb-0 dark:border-white/10">
-
-      <span className="text-xs font-bold uppercase tracking-[0.12em] text-slate-400">
-        {label}
-      </span>
-
-      <span className="text-sm font-semibold text-slate-700 dark:text-slate-200">
-        {value}
-      </span>
-
-    </div>
-  );
-}
-
-/* =========================================================
-   RELATED STORY
-========================================================= */
-
-function RelatedStoryRow({ story }) {
-  return (
-    <div className="flex items-start justify-between gap-5 p-5 transition hover:bg-amber-50/50 dark:hover:bg-slate-800/60">
-
-      <div className="min-w-0">
-
-        <p className="text-xs font-bold uppercase tracking-[0.14em] text-slate-400">
-          {story.source?.name || "Unknown source"}
-        </p>
-
-        <h3 className="mt-2 font-bold leading-6 text-slate-900 dark:text-white">
-          {story.title}
-        </h3>
-
-        {story.excerpt && (
-          <p className="mt-2 line-clamp-2 text-sm leading-6 text-slate-500 dark:text-slate-400">
-            {story.excerpt}
-          </p>
-        )}
-
-        {story.publishedAt && (
-          <p className="mt-2 text-xs text-slate-400">
-            {formatRelativeTime(story.publishedAt)}
-          </p>
-        )}
-
-      </div>
-
-      {story.canonicalUrl && (
-        <a
-          href={story.canonicalUrl}
-          target="_blank"
-          rel="noreferrer"
-          className="mt-1 shrink-0 text-sm font-bold text-amber-600 hover:text-amber-700 dark:text-amber-400"
-        >
-          Read
-        </a>
-      )}
-
-    </div>
-  );
-}
-
-/* =========================================================
-   HELPERS
-========================================================= */
-
-function getLatestSummaryRecord(story) {
-  if (!Array.isArray(story?.aiSummaries)) {
-    return null;
-  }
-
-  if (!story.aiSummaries.length) {
-    return null;
-  }
-
-  /*
-   * AISummary has:
-   * createdAt
-   * summary
-   * model
-   * version
-   */
-
-  const summaries = [...story.aiSummaries].sort(
-    (a, b) =>
-      new Date(b.createdAt).getTime() -
-      new Date(a.createdAt).getTime()
-  );
-
-  return summaries[0] || null;
-}
-
-function getLatestSummary(story) {
-  return getLatestSummaryRecord(story)?.summary || null;
-}
-
-function getKeyPoints(summary) {
-  if (!Array.isArray(summary?.keyPoints)) {
-    return [];
-  }
-
-  return summary.keyPoints
-    .filter((point) => typeof point === "string")
-    .map((point) => point.trim())
-    .filter(Boolean)
-    .slice(0, 3);
-}
-
-function getStructuredText(value) {
-  return typeof value === "string" && value.trim()
-    ? value.trim()
-    : null;
-}
-
-function getPrimaryTopic(story) {
-  if (
-    Array.isArray(story?.storyTopics) &&
-    story.storyTopics.length
-  ) {
-    return (
-      story.storyTopics[0]?.topic?.name ||
-      null
-    );
-  }
-
-  if (story?.topic?.name) {
-    return story.topic.name;
-  }
-
-  return null;
-}
-
-function getCoverageStories(cluster, currentStoryId) {
-  if (!Array.isArray(cluster?.stories)) {
-    return [];
-  }
-
-  return cluster.stories.filter(
-    (item) => item.id !== currentStoryId
-  );
-}
-
-function getSourceCount(cluster) {
-  if (!Array.isArray(cluster?.stories)) {
-    return 0;
-  }
-
-  return new Set(
-    cluster.stories
-      .map((story) => story.sourceId || story.source?.id)
-      .filter(Boolean)
-  ).size;
-}
-
-function estimateReadingTime(text) {
-  const words = String(text || "")
-    .trim()
-    .split(/\s+/)
-    .filter(Boolean).length;
-
-  return Math.max(1, Math.ceil(words / 220));
-}
-
-function buildCoverageTimeline(story, clusterStories) {
-  const stories = [
-    story,
-    ...clusterStories.filter((item) => item.id !== story.id),
-  ]
-    .map((item) => ({
-      id: item.id,
-      date: item.publishedAt || item.createdAt,
-      title: item.title,
-      sourceName: item.source?.name || "Unknown source",
-    }))
-    .filter((item) => item.date && item.title)
-    .sort((a, b) => new Date(a.date) - new Date(b.date));
-
-  if (stories.length <= 3) {
-    return stories;
-  }
-
-  return [
-    stories[0],
-    stories[Math.floor(stories.length / 2)],
-    stories[stories.length - 1],
-  ];
-}
-
-function uniqueSources(stories) {
-  const sourceMap = new Map();
-
-  for (const story of stories) {
-    const source = story.source;
-
-    if (!source?.id) {
-      continue;
-    }
-
-    if (!sourceMap.has(source.id)) {
-      sourceMap.set(source.id, source);
-    }
-  }
-
-  return Array.from(sourceMap.values());
-}
-
-function formatContentStatus(value) {
-  if (!value) {
-    return "Unknown";
-  }
-
-  return value
-    .toLowerCase()
-    .split("_")
-    .map(
-      (word) =>
-        word.charAt(0).toUpperCase() +
-        word.slice(1)
-    )
-    .join(" ");
-}
-
-function formatEnum(value) {
-  if (!value) {
-    return "Unknown";
-  }
-
-  return value
-    .toLowerCase()
-    .split("_")
-    .map(
-      (word) =>
-        word.charAt(0).toUpperCase() +
-        word.slice(1)
-    )
-    .join(" ");
-}
-
-function formatScore(value) {
-  if (value == null) {
-    return "Not available";
-  }
-
-  const number = Number(value);
-
-  if (Number.isNaN(number)) {
-    return "Not available";
-  }
-
-  return number <= 1
-    ? number.toFixed(2)
-    : number.toFixed(1);
-}
-
-function formatDate(value) {
-  const date = new Date(value);
-
-  if (Number.isNaN(date.getTime())) {
-    return "Unknown date";
-  }
-
-  return new Intl.DateTimeFormat("en-IN", {
-    dateStyle: "medium",
-    timeStyle: "short",
-  }).format(date);
-}
-
-function formatRelativeTime(value) {
-  const date = new Date(value);
-
-  if (Number.isNaN(date.getTime())) {
-    return "Unknown time";
-  }
-
-  const diff = Date.now() - date.getTime();
-
+  const diff = Math.max(0, Date.now() - timestamp);
   const minutes = Math.floor(diff / 60000);
 
-  if (minutes < 1) {
-    return "Just now";
-  }
+  if (minutes < 1) return "Just now";
 
   if (minutes < 60) {
     return `${minutes}m ago`;
@@ -1025,88 +54,613 @@ function formatRelativeTime(value) {
     return `${days}d ago`;
   }
 
-  return formatDate(value);
+  return new Intl.DateTimeFormat("en-IN", {
+    day: "numeric",
+    month: "short",
+  }).format(new Date(date));
 }
 
-/* =========================================================
-   SHARED UI
-========================================================= */
+function formatDate(date) {
+  if (!date) return "Recently";
 
-function SectionHeading({
-  eyebrow,
-  title,
-  description,
+  const parsed = new Date(date);
+
+  if (Number.isNaN(parsed.getTime())) {
+    return "Recently";
+  }
+
+  return new Intl.DateTimeFormat("en-IN", {
+    day: "numeric",
+    month: "short",
+  }).format(parsed);
+}
+
+function getSourceName(story) {
+  return (
+    story?.source?.name ||
+    story?.source?.title ||
+    "News source"
+  );
+}
+
+function getTopicName(story) {
+  return (
+    story?.storyTopics?.[0]?.topic?.name ||
+    story?.topic?.name ||
+    "News"
+  );
+}
+
+function getSourceCount(story) {
+  return story?.coverageCount || 1;
+}
+
+function getReadingTime(story, text) {
+  if (typeof story?.readingTimeSeconds === "number") {
+    return Math.max(1, Math.ceil(story.readingTimeSeconds / 60));
+  }
+
+  const words = String(text || "")
+    .trim()
+    .split(/\s+/)
+    .filter(Boolean)
+    .length;
+
+  return Math.max(1, Math.ceil(words / 220));
+}
+
+function getLatestSummaryRecord(story, preferredLanguage = "en") {
+  if (!Array.isArray(story?.aiSummaries) || !story.aiSummaries.length) {
+    return null;
+  }
+  const sorted = [...story.aiSummaries].sort(
+    (a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
+  );
+
+  const localized = sorted.find((s) => s.version && s.version.endsWith(`:${preferredLanguage}`));
+  const english = sorted.find((s) => s.version && s.version.endsWith(`:en`));
+
+  return localized || english || sorted[0] || null;
+}
+
+function buildFallbackKeyPoints(story) {
+  const text =
+    story?.excerpt ||
+    story?.content ||
+    "";
+
+  if (!text) {
+    return [];
+  }
+
+  const sentences = text
+    .replace(/\s+/g, " ")
+    .split(/(?<=[.!?])\s+/)
+    .map((sentence) => sentence.trim())
+    .filter((sentence) => sentence.length > 35);
+
+  return sentences.slice(0, 3);
+}
+
+function buildFallbackBrief(story) {
+  if (story?.excerpt) {
+    return story.excerpt;
+  }
+
+  if (story?.content) {
+    const clean = story.content
+      .replace(/\s+/g, " ")
+      .trim();
+
+    if (clean.length > 260) {
+      return `${clean.slice(0, 257)}...`;
+    }
+
+    return clean;
+  }
+
+  return "NewsLensAI is still preparing a concise briefing for this story.";
+}
+
+function getRecommendationReason(story) {
+  const scoring = story.scoring;
+  
+  // Only display reasons if the feed mode was explicitly personalized
+  if (!scoring || scoring.mode !== "personalized") return null;
+
+  // Gather the positive signals that contributed to this story's rank
+  const signals = [
+    { type: "topic", value: scoring.topicAffinity || 0 },
+    { type: "source", value: scoring.sourceAffinity || 0 },
+    { type: "reading", value: scoring.readingInterest || 0 },
+    { type: "like", value: scoring.likeSignal || 0 },
+    { type: "bookmark", value: scoring.bookmarkSignal || 0 }
+  ];
+
+  // Sort to find the dominant reason it was recommended
+  signals.sort((a, b) => b.value - a.value);
+  const topSignal = signals[0];
+
+  // If the top personalization signal is very weak, it means the story
+  // was recommended purely due to its freshness, popularity, or cluster size (cold start).
+  if (topSignal.value <= 0.1) {
+    return "Top story for you";
+  }
+
+  switch (topSignal.type) {
+    case "topic": {
+      const topicName = getTopicName(story);
+      return topicName !== "News" ? `Because you follow ${topicName}` : "Based on your topics";
+    }
+    case "source": {
+      const sourceName = getSourceName(story);
+      return sourceName !== "News source" ? `Because you follow ${sourceName}` : "Based on your sources";
+    }
+    case "reading":
+      return "Based on your reading history";
+    case "like":
+      return "Because you liked similar stories";
+    case "bookmark":
+      return "Based on your saved stories";
+    default:
+      return "Recommended for you";
+  }
+}
+
+function FallbackVisual({ story }) {
+  return (
+    <div className="relative h-full w-full overflow-hidden bg-gradient-to-br from-amber-50 via-slate-100 to-teal-50 dark:from-slate-800 dark:via-slate-900 dark:to-slate-800">
+      <div className="absolute -right-16 -top-20 h-64 w-64 rounded-full border border-amber-500/10" />
+      <div className="absolute right-8 top-12 h-44 w-44 rounded-full border border-amber-500/10" />
+      <div className="absolute -bottom-24 -left-16 h-64 w-64 rounded-full border border-teal-500/10" />
+
+      <div className="absolute inset-0 flex items-center justify-center">
+        <div className="text-center">
+          <div className="mx-auto flex h-14 w-14 items-center justify-center rounded-2xl border border-white/80 bg-white/80 shadow-sm backdrop-blur dark:border-white/10 dark:bg-slate-800/80">
+            <Globe2 className="h-6 w-6 text-signal" />
+          </div>
+
+          <p className="mt-3 text-[10px] font-bold uppercase tracking-[0.2em] text-signal">
+            {getTopicName(story)}
+          </p>
+
+          <p className="mt-1 text-xs font-semibold text-slate-500 dark:text-slate-400">
+            NewsLensAI briefing
+          </p>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function StoryImage({ story }) {
+  if (!story?.imageUrl) {
+    return <FallbackVisual story={story} />;
+  }
+
+  return (
+    <img
+      src={story.imageUrl}
+      alt=""
+      loading="lazy"
+      className="h-full w-full object-cover transition duration-500 group-hover:scale-[1.02]"
+    />
+  );
+}
+
+function ActionButton({
+  children,
+  onClick,
+  active = false,
+  label,
 }) {
   return (
-    <div>
-
-      <p className="text-xs font-bold uppercase tracking-[0.2em] text-teal-700 dark:text-teal-400">
-        {eyebrow}
-      </p>
-
-      <h2 className="mt-1 text-2xl font-black tracking-tight text-slate-950 sm:text-3xl dark:text-white">
-        {title}
-      </h2>
-
-      {description && (
-        <p className="mt-2 max-w-3xl text-sm leading-6 text-slate-500 dark:text-slate-400">
-          {description}
-        </p>
-      )}
-
-    </div>
-  );
-}
-
-function LoadingBlock({ text }) {
-  return (
-    <div className="mt-5 rounded-[28px] border border-stroke bg-white/60 p-8 text-sm text-slate-500 dark:border-white/10 dark:bg-slate-900/50 dark:text-slate-400">
-      {text}
-    </div>
-  );
-}
-
-function EmptyBlock({ children }) {
-  return (
-    <div className="mt-5 rounded-[28px] border border-dashed border-stroke bg-white/50 px-6 py-10 text-center text-sm leading-6 text-slate-500 dark:border-white/10 dark:bg-slate-900/40 dark:text-slate-400">
+    <button
+      type="button"
+      aria-label={label}
+      onClick={(event) => {
+        event.preventDefault();
+        event.stopPropagation();
+        onClick?.();
+      }}
+      className={[
+        "inline-flex h-9 items-center gap-2 rounded-xl px-3 text-xs font-semibold transition",
+        active
+          ? "bg-signal/10 text-signal"
+          : "text-slate-500 hover:bg-shell hover:text-slate-900 dark:text-slate-400 dark:hover:text-white",
+      ].join(" ")}
+    >
       {children}
-    </div>
+    </button>
   );
 }
 
-/* =========================================================
-   ICONS
-========================================================= */
+function StoryCard({ story }) {
+  // Safety check to handle undefined story states without breaking rendering
+  if (!story) {
+    return null;
+  }
 
-function ArrowLeftIcon() {
+  const { user } = useAuth();
+  const { language } = useLanguage();
+  const isSignedIn = Boolean(user);
+
+  const { data: feedback } = useStoryFeedback(story.id, {
+    enabled: isSignedIn,
+  });
+
+  const setFeedback = useSetStoryFeedback(story.id);
+
+  const { data: isSkipped } = useStorySkip(story.id, {
+    enabled: isSignedIn,
+  });
+
+  const toggleSkip = useToggleStorySkip(story.id);
+
+  const { data: bookmarkedStories = [] } = useBookmarks({
+    enabled: isSignedIn,
+  });
+
+  const toggleBookmark = useToggleBookmark();
+
+  const aiSummary = getLatestSummaryRecord(story, language);
+
+  const isBookmarked = bookmarkedStories.some(
+    (bookmark) =>
+      bookmark.id === story.id ||
+      bookmark.storyId === story.id ||
+      bookmark.story?.id === story.id
+  );
+
+  const topic = getTopicName(story);
+  const source = getSourceName(story);
+  const date = getDate(story);
+
+  const sourceCount = getSourceCount(story);
+  
+  const bias = story?.biasAnalysis;
+  const brief = aiSummary?.summary || buildFallbackBrief(story);
+  const minutesToRead = getReadingTime(story, story.content || story.excerpt || brief);
+
+  const recommendationReason = getRecommendationReason(story);
+
+  const aiKeyPoints = Array.isArray(aiSummary?.keyPoints)
+    ? aiSummary.keyPoints.filter(Boolean).slice(0, 3)
+    : [];
+
+  const fallbackKeyPoints = buildFallbackKeyPoints(story);
+
+  const keyPoints =
+    aiKeyPoints.length > 0
+      ? aiKeyPoints
+      : fallbackKeyPoints;
+
+  const handleFeedback = (value) => {
+    if (!isSignedIn) return;
+
+    setFeedback.mutate(
+      feedback === value ? null : value
+    );
+  };
+
+  const handleBookmark = () => {
+    if (!isSignedIn) return;
+
+    toggleBookmark.mutate({
+      storyId: story.id,
+      isBookmarked,
+    });
+  };
+
+  const handleSkip = () => {
+    if (!isSignedIn) return;
+
+    toggleSkip.mutate();
+  };
+
+  const handleShare = async () => {
+    const url = `${window.location.origin}/story/${story.id}`;
+
+    try {
+      if (navigator.share) {
+        await navigator.share({
+          title: story.title,
+          url,
+        });
+
+        return;
+      }
+
+      await navigator.clipboard?.writeText(url);
+    } catch {
+      // User cancelled native sharing.
+    }
+  };
+
   return (
-    <svg
-      viewBox="0 0 24 24"
-      fill="none"
-      stroke="currentColor"
-      strokeWidth="1.8"
-      className="h-4 w-4"
+    <article
+      className="
+        group
+        overflow-hidden
+        rounded-[28px]
+        border
+        border-stroke
+        bg-card
+        shadow-[0_14px_45px_rgba(15,23,42,0.08)]
+      "
     >
-      <path d="M19 12H5" />
-      <path d="m12 19-7-7 7-7" />
-    </svg>
+
+      {/* ─────────────────────────────
+         IMAGE
+      ───────────────────────────── */}
+
+      <div className="relative h-[30vh] min-h-[220px] max-h-[300px] overflow-hidden sm:h-[32vh]">
+
+        <StoryImage story={story} />
+
+        <div className="pointer-events-none absolute inset-0 bg-gradient-to-b from-black/25 via-transparent to-black/15" />
+
+        {/* Story type */}
+        <div className="absolute left-4 top-4">
+          <span className="rounded-full bg-black/55 px-3 py-1.5 text-[10px] font-bold uppercase tracking-[0.16em] text-white backdrop-blur">
+            News
+          </span>
+        </div>
+
+        {/* Time */}
+        <div className="absolute right-4 top-4">
+          <span className="rounded-full bg-black/55 px-3 py-1.5 text-xs font-semibold text-white backdrop-blur">
+            {date ? relativeTime(date) : "Recently"}
+          </span>
+        </div>
+      </div>
+
+      {/* ─────────────────────────────
+         CONTENT
+      ───────────────────────────── */}
+
+      <div className="px-5 pb-5 pt-5 sm:px-6 sm:pb-6">
+
+        {/* Recommendation Reason (Personalization) */}
+        {recommendationReason && (
+          <div className="mb-3 flex items-center gap-1.5 text-[10px] font-bold uppercase tracking-[0.14em] text-amber-600 dark:text-amber-400">
+            <Sparkles size={12} />
+            <span>{recommendationReason}</span>
+          </div>
+        )}
+
+        {/* Source / topic / date */}
+        <div className="flex flex-wrap items-center gap-2 text-[10px] font-bold uppercase tracking-[0.14em]">
+
+          <span className="text-signal">
+            {topic}
+          </span>
+
+          <span className="text-slate-300 dark:text-slate-600">
+            •
+          </span>
+
+          <span className="text-slate-500 dark:text-slate-400">
+            {source}
+          </span>
+
+          {date && (
+            <>
+              <span className="text-slate-300 dark:text-slate-600">
+                •
+              </span>
+
+              <span className="text-slate-400 dark:text-slate-500">
+                {formatDate(date)}
+              </span>
+            </>
+          )}
+        </div>
+
+        {/* Headline */}
+
+        <h2 className="mt-3 text-[24px] font-extrabold leading-[1.16] tracking-[-0.03em] text-ink sm:text-[28px] dark:text-white">
+          {story.title}
+        </h2>
+
+        {/* ─────────────────────────────
+            AI BRIEF
+        ───────────────────────────── */}
+
+        <section className="mt-5 rounded-2xl bg-shell/80 p-4 sm:p-5 dark:bg-slate-800/50">
+
+          <div className="flex items-center gap-2">
+
+            <Sparkles className="h-4 w-4 text-signal" />
+
+            <p className="text-[10px] font-bold uppercase tracking-[0.18em] text-signal">
+              {aiSummary?.summary
+                ? "AI Brief"
+                : "Brief"}
+            </p>
+
+          </div>
+
+          <p className="mt-2 line-clamp-4 text-sm leading-6 text-slate-600 dark:text-slate-300">
+            {brief}
+          </p>
+        </section>
+
+        {/* ─────────────────────────────
+            KEY POINTS
+        ───────────────────────────── */}
+
+        {keyPoints.length > 0 && (
+          <section className="mt-5">
+
+            <p className="text-[10px] font-bold uppercase tracking-[0.18em] text-slate-400 dark:text-slate-500">
+              Key takeaways
+            </p>
+
+            <div className="mt-3 space-y-2.5">
+
+              {keyPoints.map((point, index) => (
+                <div
+                  key={`${story.id}-point-${index}`}
+                  className="flex gap-3"
+                >
+                  <span className="mt-[7px] h-1.5 w-1.5 shrink-0 rounded-full bg-signal" />
+
+                  <p className="line-clamp-2 text-xs leading-5 text-slate-600 dark:text-slate-300">
+                    {point}
+                  </p>
+                </div>
+              ))}
+
+            </div>
+          </section>
+        )}
+
+        {/* ─────────────────────────────
+            WHY IT MATTERS
+        ───────────────────────────── */}
+
+        {aiSummary?.whyItMatters && (
+          <section className="mt-5">
+
+            <p className="text-[10px] font-bold uppercase tracking-[0.18em] text-slate-400 dark:text-slate-500">
+              Why it matters
+            </p>
+
+            <p className="mt-2 text-xs leading-5 text-slate-600 dark:text-slate-300">
+              {aiSummary.whyItMatters}
+            </p>
+
+          </section>
+        )}
+
+        {/* ─────────────────────────────
+            METADATA
+        ───────────────────────────── */}
+
+        <div className="mt-5 flex flex-wrap items-center gap-x-3 gap-y-2 text-xs font-semibold text-slate-500 dark:text-slate-400">
+
+          <span>
+            {sourceCount}{" "}
+            {sourceCount === 1 ? "source" : "sources"}
+          </span>
+
+          <span>•</span>
+
+          <span className="inline-flex items-center gap-1.5">
+            <Clock3 className="h-3.5 w-3.5" />
+            {minutesToRead} min read
+          </span>
+
+          {bias?.tone && (
+            <>
+              <span>•</span>
+              <span className="capitalize">{bias.tone} tone</span>
+            </>
+          )}
+
+        </div>
+
+        {/* ─────────────────────────────
+            ACTIONS
+        ───────────────────────────── */}
+
+        <div className="mt-4 flex items-center justify-between border-t border-stroke pt-3 dark:border-white/10">
+
+          <div className="flex items-center flex-wrap gap-1">
+
+            {isSignedIn && (
+              <>
+                <ActionButton
+                  label="More like this"
+                  active={feedback === "LIKE"}
+                  onClick={() => handleFeedback("LIKE")}
+                >
+                  <span className="text-base">♥</span>
+                </ActionButton>
+
+                <ActionButton
+                  label="Less like this"
+                  active={feedback === "DISLIKE"}
+                  onClick={() => handleFeedback("DISLIKE")}
+                >
+                  <span className="text-base">↓</span>
+                </ActionButton>
+              </>
+            )}
+
+            <ActionButton
+              label="Share story"
+              onClick={handleShare}
+            >
+              <Share2 className="h-4 w-4" />
+            </ActionButton>
+
+            {isSignedIn && (
+              <ActionButton
+                label={
+                  isBookmarked
+                    ? "Remove bookmark"
+                    : "Save story"
+                }
+                active={isBookmarked}
+                onClick={handleBookmark}
+              >
+                {isBookmarked ? (
+                  <BookmarkCheck className="h-4 w-4" />
+                ) : (
+                  <Bookmark className="h-4 w-4" />
+                )}
+              </ActionButton>
+            )}
+
+            {isSignedIn && (
+              <ActionButton
+                label="Hide story"
+                active={Boolean(isSkipped)}
+                onClick={handleSkip}
+              >
+                <MoreHorizontal className="h-4 w-4" />
+              </ActionButton>
+            )}
+
+          </div>
+
+        </div>
+
+        {/* ─────────────────────────────
+            PRIMARY ACTION
+        ───────────────────────────── */}
+
+        <Link
+          to={`/story/${story.id}`}
+          className="
+            mt-3
+            flex
+            h-12
+            items-center
+            justify-center
+            gap-2
+            rounded-xl
+            bg-signal
+            text-sm
+            font-bold
+            text-white
+            transition
+            hover:opacity-90
+            active:scale-[0.99]
+          "
+        >
+          Understand this story
+
+          <span aria-hidden="true">
+            →
+          </span>
+        </Link>
+
+      </div>
+    </article>
   );
 }
 
-function ExternalLinkIcon() {
-  return (
-    <svg
-      viewBox="0 0 24 24"
-      fill="none"
-      stroke="currentColor"
-      strokeWidth="1.8"
-      className="h-4 w-4"
-    >
-      <path d="M14 5h5v5" />
-      <path d="M19 5 10 14" />
-      <path d="M19 13v5a1 1 0 0 1-1 1H6a1 1 0 0 1-1-1V6a1 1 0 0 1 1-1h5" />
-    </svg>
-  );
-}
-
-export default Story;
+export default StoryCard;

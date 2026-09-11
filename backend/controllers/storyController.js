@@ -23,49 +23,35 @@ exports.triggerIngestion = asyncHandler(async (req, res) => {
 
 // Get stories
 exports.getStories = asyncHandler(async (req, res) => {
-  const page = Math.max(
-    parseInt(req.query.page, 10) || 1,
-    1
-  );
-
-  const limit = Math.min(
-    Math.max(
-      parseInt(req.query.limit, 10) || 6,
-      1
-    ),
-    24
-  );
-
-  const search =
-    req.query.search?.trim() || "";
+  const page = Math.max(parseInt(req.query.page, 10) || 1, 1);
+  const limit = Math.min(Math.max(parseInt(req.query.limit, 10) || 6, 1), 24);
+  const search = req.query.search?.trim() || "";
+  
+  // Force lowercase so "Hinglish" becomes "hinglish"
+  const lang = (req.query.lang || "en").toLowerCase(); 
 
   const result = await storyService.getStories({
     page,
     limit,
     search,
     cursor: req.query.cursor,
+    lang,
   });
 
-  return ApiResponse.success(
-    res,
-    result,
-    "Stories fetched successfully"
-  );
+  return ApiResponse.success(res, result, "Stories fetched successfully");
 });
-
 // Get single story
 exports.getSingleStory = asyncHandler(async (req, res) => {
   const { id } = req.params;
+  
+  // Force lowercase here as well
+  const lang = (req.query.lang || "en").toLowerCase(); 
 
-  const story =
-    await storyService.getSingleStory(id);
+  const story = await storyService.getSingleStory(id, lang);
 
-  return ApiResponse.success(
-    res,
-    story,
-    "Story fetched successfully"
-  );
+  return ApiResponse.success(res, story, "Story fetched successfully");
 });
+
 
 // Toggle bookmark
 exports.toggleBookmark = asyncHandler(async (req, res) => {

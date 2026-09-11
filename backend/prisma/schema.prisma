@@ -25,38 +25,38 @@ model User {
 }
 
 model Story {
-  id             String @id @default(uuid()) @db.Uuid
-  sourceId       String @map("source_id") @db.Uuid
-  externalId     String @map("external_id")
-  canonicalUrl   String @map("canonical_url")
+  id                 String         @id @default(uuid()) @db.Uuid
+  sourceId           String         @map("source_id") @db.Uuid
+  externalId         String         @map("external_id")
+  canonicalUrl       String         @map("canonical_url")
 
-  title          String
-  author         String?
-  content        String?
-  excerpt        String?
+  title              String
+  author             String?
+  content            String?
+  excerpt            String?
 
-  imageUrl       String? @map("image_url")
+  imageUrl           String?        @map("image_url")
+  readingTimeSeconds Int?           @map("reading_time_seconds")
 
-  contentStatus  ContentStatus @default(EXTERNAL_ONLY) @map("content_status")
-  publishedAt    DateTime? @map("published_at")
-  createdAt      DateTime @default(now()) @map("created_at")
-  updatedAt      DateTime @updatedAt @map("updated_at")
+  contentStatus      ContentStatus  @default(EXTERNAL_ONLY) @map("content_status")
+  publishedAt        DateTime?      @map("published_at")
+  createdAt          DateTime       @default(now()) @map("created_at")
+  updatedAt          DateTime       @updatedAt @map("updated_at")
 
-  clusterId      String? @map("cluster_id") @db.Uuid
+  clusterId          String?        @map("cluster_id") @db.Uuid
+  points             Int?
 
-  points         Int?
+  aiSummaries        AISummary[]
+  biasAnalysis       BiasAnalysis?
+  bookmarks          Bookmark[]
+  readingHistory     ReadingHistory[]
 
-  aiSummaries    AISummary[]
-  biasAnalysis   BiasAnalysis?
-  bookmarks      Bookmark[]
-  readingHistory ReadingHistory[]
+  feedback           StoryFeedback[]
+  cluster            StoryCluster?  @relation(fields: [clusterId], references: [id])
+  source             sources        @relation(fields: [sourceId], references: [id])
 
-  feedback       StoryFeedback[]
-  cluster        StoryCluster? @relation(fields: [clusterId], references: [id])
-  source         sources @relation(fields: [sourceId], references: [id])
-
-  storyTopics    StoryTopic[]
-  storySkips     StorySkip[]
+  storyTopics        StoryTopic[]
+  storySkips         StorySkip[]
 
   @@unique([sourceId, externalId])
   @@index([sourceId, publishedAt(sort: Desc)])
@@ -64,6 +64,7 @@ model Story {
   @@index([clusterId])
   @@map("stories")
 }
+
 
 model Bookmark {
   id        String   @id @default(uuid()) @db.Uuid

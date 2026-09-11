@@ -22,7 +22,7 @@ export default function QuickBriefing({ stories = [] }) {
   const [progress, setProgress] = useState(0);
   const [isAudioEnabled, setIsAudioEnabled] = useState(false);
 
-  // Filter top stories that have a valid summary
+  // Take the top stories that actually have an AI summary
   const briefingStories = stories
     .filter((story) => getLatestSummaryRecord(story, language)?.summary)
     .slice(0, 5);
@@ -30,11 +30,9 @@ export default function QuickBriefing({ stories = [] }) {
   const activeStory = briefingStories[currentIndex];
   const activeSummary = activeStory ? getLatestSummaryRecord(activeStory, language) : null;
 
-  // Touch gesture coordinates
   const touchStartX = useRef(0);
   const touchEndX = useRef(0);
 
-  // Duration per slide: 12 seconds by default
   const SLIDE_DURATION_MS = 12000;
   const TICK_INTERVAL_MS = 100;
 
@@ -55,13 +53,7 @@ export default function QuickBriefing({ stories = [] }) {
 
     const utterance = new SpeechSynthesisUtterance(activeSummary.summary);
     utterance.rate = 1.0;
-
-    // Pick appropriate voice language tag
-    if (language === "hi") {
-      utterance.lang = "hi-IN";
-    } else {
-      utterance.lang = "en-US";
-    }
+    utterance.lang = language === "hi" ? "hi-IN" : "en-US";
 
     window.speechSynthesis.speak(utterance);
   }, [isAudioEnabled, activeSummary, language]);
@@ -96,9 +88,7 @@ export default function QuickBriefing({ stories = [] }) {
     }
   }, [isOpen, currentIndex, isAudioEnabled, speakActiveStory, stopSpeech]);
 
-  // --------------------------------------------------------------------------
   // Auto-advancing Timer
-  // --------------------------------------------------------------------------
   useEffect(() => {
     if (!isOpen || isPaused) return;
 
@@ -116,9 +106,7 @@ export default function QuickBriefing({ stories = [] }) {
     return () => clearInterval(timer);
   }, [isOpen, isPaused, goToNext]);
 
-  // --------------------------------------------------------------------------
   // Keyboard Shortcuts
-  // --------------------------------------------------------------------------
   useEffect(() => {
     if (!isOpen) return;
 
@@ -139,9 +127,6 @@ export default function QuickBriefing({ stories = [] }) {
     return () => window.removeEventListener("keydown", handleKeyDown);
   }, [isOpen, goToNext, goToPrev, stopSpeech]);
 
-  // --------------------------------------------------------------------------
-  // Touch Handlers (Swipe Left / Right)
-  // --------------------------------------------------------------------------
   const handleTouchStart = (e) => {
     touchStartX.current = e.targetTouches[0].clientX;
     setIsPaused(true);
@@ -154,14 +139,13 @@ export default function QuickBriefing({ stories = [] }) {
   const handleTouchEnd = () => {
     setIsPaused(false);
     const diff = touchStartX.current - touchEndX.current;
-    // 50px threshold for swipe detection
-    if (diff > 50) {
-      goToNext();
-    } else if (diff < -50) {
-      goToPrev();
-    }
+    if (diff > 50) goToNext();
+    else if (diff < -50) goToPrev();
   };
 
+  // ──────────────────────────────────────────────────────────
+  // CONDITIONAL RETURN MUST BE *AFTER* ALL HOOKS ABOVE
+  // ──────────────────────────────────────────────────────────
   if (briefingStories.length < 3) {
     return null;
   }
@@ -178,9 +162,6 @@ export default function QuickBriefing({ stories = [] }) {
 
   return (
     <>
-      {/* ──────────────────────────────────────────────────────────
-          1. WIDGET COMPONENT (Rendered directly in the Feed)
-      ────────────────────────────────────────────────────────── */}
       <section className="mb-8 overflow-hidden rounded-[32px] border border-stroke bg-white/75 p-6 shadow-sm backdrop-blur-xl sm:p-8 dark:border-white/10 dark:bg-slate-900/70">
         <div className="mb-6 flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
           <div>
@@ -200,7 +181,7 @@ export default function QuickBriefing({ stories = [] }) {
               setProgress(0);
               setIsOpen(true);
             }}
-            className="inline-flex w-full items-center justify-center gap-2 rounded-full bg-slate-950 px-6 py-3.5 text-sm font-bold text-white shadow-sm transition hover:bg-slate-800 hover:scale-[1.02] active:scale-[0.98] sm:w-auto dark:bg-white dark:text-slate-950 dark:hover:bg-slate-200"
+            className="inline-flex w-full items-center justify-center gap-2 rounded-full bg-slate-950 px-6 py-3.5 text-sm font-bold text-white shadow-sm transition hover:bg-slate-800 sm:w-auto dark:bg-white dark:text-slate-950 dark:hover:bg-slate-200"
           >
             <Play size={16} fill="currentColor" />
             Start briefing
@@ -241,9 +222,7 @@ export default function QuickBriefing({ stories = [] }) {
         </div>
       </section>
 
-      {/* ──────────────────────────────────────────────────────────
-          2. FULL-SCREEN STORY PLAYER (Stories / TikTok Layout)
-      ────────────────────────────────────────────────────────── */}
+      {/* Full-Screen Player Overlay */}
       {isOpen && activeStory && (
         <div
           className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/95 p-4 backdrop-blur-2xl sm:p-6"
@@ -251,14 +230,10 @@ export default function QuickBriefing({ stories = [] }) {
           onTouchMove={handleTouchMove}
           onTouchEnd={handleTouchEnd}
         >
-          {/* Top Bar Navigation & Progress Indicators */}
           <div className="absolute inset-x-0 top-0 z-10 flex items-center justify-between p-4 sm:p-6">
             <div className="flex flex-1 max-w-lg items-center gap-1.5">
               {briefingStories.map((_, idx) => (
-                <div
-                  key={idx}
-                  className="h-1.5 flex-1 overflow-hidden rounded-full bg-white/20"
-                >
+                <div key={idx} className="h-1.5 flex-1 overflow-hidden rounded-full bg-white/20">
                   <div
                     className="h-full bg-amber-400 transition-all duration-100 ease-linear"
                     style={{
@@ -275,7 +250,6 @@ export default function QuickBriefing({ stories = [] }) {
             </div>
 
             <div className="ml-4 flex items-center gap-2">
-              {/* Play / Pause */}
               <button
                 type="button"
                 onClick={() => setIsPaused((p) => !p)}
@@ -285,7 +259,6 @@ export default function QuickBriefing({ stories = [] }) {
                 {isPaused ? <Play size={16} fill="currentColor" /> : <Pause size={16} fill="currentColor" />}
               </button>
 
-              {/* Audio Reader Toggle */}
               <button
                 type="button"
                 onClick={() => setIsAudioEnabled((a) => !a)}
@@ -298,7 +271,6 @@ export default function QuickBriefing({ stories = [] }) {
                 {isAudioEnabled ? <Volume2 size={18} /> : <VolumeX size={18} />}
               </button>
 
-              {/* Close */}
               <button
                 type="button"
                 onClick={() => {
@@ -313,19 +285,6 @@ export default function QuickBriefing({ stories = [] }) {
             </div>
           </div>
 
-          {/* Interactive Tap Zones (Left 25% = Prev, Right 25% = Next) */}
-          <div
-            onClick={goToPrev}
-            className="absolute inset-y-0 left-0 z-0 hidden w-1/4 cursor-pointer sm:block"
-            aria-hidden="true"
-          />
-          <div
-            onClick={goToNext}
-            className="absolute inset-y-0 right-0 z-0 hidden w-1/4 cursor-pointer sm:block"
-            aria-hidden="true"
-          />
-
-          {/* Story Content Card */}
           <div
             onMouseEnter={() => setIsPaused(true)}
             onMouseLeave={() => setIsPaused(false)}
@@ -341,7 +300,6 @@ export default function QuickBriefing({ stories = [] }) {
               {activeStory.title}
             </h2>
 
-            {/* What Happened Box */}
             <div className="mt-6 rounded-2xl bg-white/5 p-5">
               <p className="text-[10px] font-bold uppercase tracking-[0.16em] text-amber-400/80">
                 What happened
@@ -351,7 +309,6 @@ export default function QuickBriefing({ stories = [] }) {
               </p>
             </div>
 
-            {/* Key Takeaways */}
             {getKeyPoints(activeSummary).length > 0 && (
               <div className="mt-6">
                 <p className="text-[10px] font-bold uppercase tracking-[0.16em] text-white/50">
@@ -368,7 +325,6 @@ export default function QuickBriefing({ stories = [] }) {
               </div>
             )}
 
-            {/* Bottom Actions */}
             <div className="mt-8 flex flex-col gap-4 border-t border-white/10 pt-6 sm:flex-row sm:items-center sm:justify-between">
               <Link
                 to={`/story/${activeStory.id}`}
@@ -409,10 +365,7 @@ export default function QuickBriefing({ stories = [] }) {
   );
 }
 
-/* =========================================================
-   HELPER UTILITIES
-========================================================= */
-
+// Helpers
 function getLatestSummaryRecord(story, preferredLanguage = "en") {
   if (!Array.isArray(story?.aiSummaries) || !story.aiSummaries.length) {
     return null;
@@ -420,7 +373,6 @@ function getLatestSummaryRecord(story, preferredLanguage = "en") {
   const sorted = [...story.aiSummaries].sort(
     (a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
   );
-
   const localized = sorted.find((s) => s.version && s.version.endsWith(`:${preferredLanguage}`));
   const english = sorted.find((s) => s.version && s.version.endsWith(`:en`));
   return localized || english || sorted[0] || null;

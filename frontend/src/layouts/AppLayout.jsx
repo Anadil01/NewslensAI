@@ -25,12 +25,13 @@ const AppLayout = () => {
         <div
           className={[
             "min-w-0 flex-1 transition-[margin] duration-300",
+            "flex flex-col min-h-[calc(100vh-4rem)]",
             sidebarCollapsed
               ? "lg:ml-0"
               : "lg:ml-0",
           ].join(" ")}
         >
-          <main className="px-4 py-6 sm:px-6 lg:px-8">
+          <main className="flex-1 px-4 py-6 sm:px-6 lg:px-8">
             <Outlet />
           </main>
 

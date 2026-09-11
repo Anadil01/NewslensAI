@@ -4,12 +4,27 @@ const AppError = require("../utils/AppError");
 const {
   getCache,
   setCache,
-  deleteCache
+  deleteCache,
+  existsCache
 } = require("../utils/cache");
 
-// Shared shape for list endpoints: enough to render a card without the
-// client having to guess the source by parsing `canonicalUrl`.
-const storyListInclude = {
+const { enqueueIngestion } = require("./ingestionJobService");
+
+// Helper to handle the case-insensitive language filter and English fallback
+const getAiSummariesFilter = (lang) => {
+  const safeLang = (lang || "en").toLowerCase();
+  if (safeLang === "en") {
+    return undefined; // Bypass filter for English to grab the default original summary
+  }
+  return {
+    version: {
+      contains: safeLang,
+      mode: "insensitive"
+    }
+  };
+};
+
+const getStoryListInclude = (lang = "en") => ({
   source: {
     select: {
       id: true,
@@ -20,12 +35,12 @@ const storyListInclude = {
       reliabilityScore: true
     }
   },
-
   aiSummaries: {
+    where: getAiSummariesFilter(lang),
     orderBy: {
       createdAt: "desc"
     },
-    take: 1,
+    take: 4, 
     select: {
       summary: true,
       keyPoints: true,
@@ -36,7 +51,14 @@ const storyListInclude = {
       createdAt: true
     }
   },
-
+  biasAnalysis: {
+    select: {
+      biasScore: true,
+      tone: true,
+      confidence: true,
+      signals: true
+    }
+  },
   storyTopics: {
     include: {
       topic: {
@@ -48,14 +70,12 @@ const storyListInclude = {
       }
     }
   }
-};
+});
 
-// Detail view additionally needs bias analysis, summary entities,
-// and the other stories belonging to the same cluster.
-const storyDetailInclude = {
-  ...storyListInclude,
-
+const getStoryDetailInclude = (lang = "en") => ({
+  ...getStoryListInclude(lang),
   aiSummaries: {
+    where: getAiSummariesFilter(lang),
     orderBy: {
       createdAt: "desc"
     },
@@ -71,16 +91,6 @@ const storyDetailInclude = {
       createdAt: true
     }
   },
-
-  biasAnalysis: {
-    select: {
-      biasScore: true,
-      tone: true,
-      confidence: true,
-      signals: true
-    }
-  },
-
   cluster: {
     include: {
       stories: {
@@ -99,8 +109,8 @@ const storyDetailInclude = {
               reliabilityScore: true
             }
           },
-
           aiSummaries: {
+            where: getAiSummariesFilter(lang),
             orderBy: {
               createdAt: "desc"
             },
@@ -119,64 +129,14 @@ const storyDetailInclude = {
       }
     }
   }
+});
+
+const buildStoriesCacheKey = ({ page, limit, search, lang }) => {
+  return `stories:v4:page:${page}:limit:${limit}:search:${search}:lang:${lang}`;
 };
 
-// `v3` marks the payload shape that now carries coverageCount.
-const buildStoriesCacheKey = ({
-  page,
-  limit,
-  search,
-  cursor
-}) => {
-  return `stories:v3:page:${page}:limit:${limit}:search:${search}:cursor:${cursor || "first"}`;
-};
-
-const encodeCursor = (story) =>
-  Buffer.from(
-    JSON.stringify({
-      points: story.points,
-      id: story.id
-    })
-  ).toString("base64url");
-
-const decodeCursor = (cursor) => {
-  try {
-    const parsed = JSON.parse(
-      Buffer.from(cursor, "base64url").toString("utf8")
-    );
-
-    if (
-      typeof parsed.id !== "string" ||
-      (
-        parsed.points !== null &&
-        !Number.isInteger(parsed.points)
-      )
-    ) {
-      throw new Error("Invalid cursor");
-    }
-
-    return parsed;
-  } catch {
-    throw new AppError("Invalid pagination cursor", 400);
-  }
-};
-
-/*
- * Adds the number of unique sources covering each clustered story.
- *
- * Example:
- *
- * Cluster A:
- *   BBC      -> article
- *   BBC      -> article
- *   Reuters -> article
- *   AP       -> article
- *
- * coverageCount = 3
- *
- * Unclustered stories receive coverageCount = 1.
- */
-const addCoverageCount = async (stories) => {
+// RENAMED AND UPDATED to map to sourceCount
+const addSourceCount = async (stories) => {
   const clusterIds = [
     ...new Set(
       stories
@@ -188,7 +148,7 @@ const addCoverageCount = async (stories) => {
   if (clusterIds.length === 0) {
     return stories.map((story) => ({
       ...story,
-      coverageCount: 1
+      sourceCount: 1
     }));
   }
 
@@ -204,211 +164,106 @@ const addCoverageCount = async (stories) => {
   const coverageMap = new Map();
 
   for (const row of coverageRows) {
-    const currentCount =
-      coverageMap.get(row.clusterId) || 0;
-
-    coverageMap.set(
-      row.clusterId,
-      currentCount + 1
-    );
+    const currentCount = coverageMap.get(row.clusterId) || 0;
+    coverageMap.set(row.clusterId, currentCount + 1);
   }
 
   return stories.map((story) => ({
     ...story,
-
-    coverageCount: story.clusterId
-      ? coverageMap.get(story.clusterId) || 1
-      : 1
+    sourceCount: story.clusterId ? coverageMap.get(story.clusterId) || 1 : 1
   }));
+};
+
+const triggerBackgroundRefreshIfNeeded = async (force = false) => {
+  const COOLDOWN_KEY = "lock:ingestion:auto_cooldown";
+  const inCooldown = await existsCache(COOLDOWN_KEY);
+
+  if (!inCooldown || force) {
+    await setCache(COOLDOWN_KEY, { triggeredAt: Date.now() }, 600);
+    try {
+      await enqueueIngestion("system:auto-refresh");
+      console.log("Background news ingestion queued.");
+    } catch (err) {
+      console.warn("Could not queue background ingestion:", err.message);
+    }
+  }
 };
 
 const getStories = async ({
   page = 1,
   limit = 6,
   search = "",
-  cursor
+  refresh = false,
+  lang = "en"
 }) => {
-  const cacheKey = buildStoriesCacheKey({
-    page,
-    limit,
-    search,
-    cursor
-  });
+  const cacheKey = buildStoriesCacheKey({ page, limit, search, lang });
+
+  if (refresh) {
+    void triggerBackgroundRefreshIfNeeded(true);
+  }
 
   const cachedResult = await getCache(cacheKey);
 
   if (cachedResult) {
-    console.log(
-      "Stories cache HIT:",
-      cacheKey
-    );
-
+    console.log("Stories cache HIT:", cacheKey);
+    void triggerBackgroundRefreshIfNeeded(false);
     return cachedResult;
   }
 
-  console.log(
-    "Stories cache MISS:",
-    cacheKey
-  );
+  console.log("Stories cache MISS:", cacheKey);
 
   const searchWhere = search
     ? {
         OR: [
-          {
-            title: {
-              contains: search,
-              mode: "insensitive"
-            }
-          },
-          {
-            author: {
-              contains: search,
-              mode: "insensitive"
-            }
-          }
+          { title: { contains: search, mode: "insensitive" } },
+          { author: { contains: search, mode: "insensitive" } }
         ]
       }
     : {};
 
-  let where = searchWhere;
+  const total = await prisma.story.count({ where: searchWhere });
 
-  if (cursor) {
-    const {
-      points,
-      id
-    } = decodeCursor(cursor);
-
-    const keysetWhere =
-      points === null
-        ? {
-            points: null,
-            id: {
-              gt: id
-            }
-          }
-        : {
-            OR: [
-              {
-                points: {
-                  lt: points
-                }
-              },
-              {
-                points,
-                id: {
-                  gt: id
-                }
-              },
-              {
-                points: null
-              }
-            ]
-          };
-
-    where = {
-      AND: [
-        searchWhere,
-        keysetWhere
-      ]
-    };
-  }
-
-  const total = cursor
-    ? null
-    : await prisma.story.count({
-        where
-      });
-
+  // STRICT OFFSET PAGINATION & CHRONOLOGICAL SORTING
   const stories = await prisma.story.findMany({
-    where,
-
-    include: storyListInclude,
-
+    where: searchWhere,
+    include: getStoryListInclude(lang),
     orderBy: [
-      {
-        points: {
-          sort: "desc",
-          nulls: "last"
-        }
-      },
-      {
-        id: "asc"
-      }
+      { publishedAt: "desc" },
+      { createdAt: "desc" }
     ],
-
-    skip: cursor
-      ? 0
-      : (page - 1) * limit,
-
-    take: limit + 1
+    skip: (page - 1) * limit,
+    take: limit
   });
 
-  const hasNextPage =
-    stories.length > limit;
-
-  const pageStories = hasNextPage
-    ? stories.slice(0, limit)
-    : stories;
-
-  /*
-   * Calculate coverage only for stories
-   * actually returned to the client.
-   */
-  const storiesWithCoverage =
-    await addCoverageCount(pageStories);
-
-  const nextCursor = hasNextPage
-    ? encodeCursor(pageStories.at(-1))
-    : null;
+  const hasNextPage = page * limit < total;
+  // APPLIED FIX
+  const storiesWithCoverage = await addSourceCount(stories);
 
   const result = {
     stories: storiesWithCoverage,
-
     pagination: {
       total,
       page,
       limit,
-
-      totalPages:
-        total === null
-          ? null
-          : Math.max(
-              Math.ceil(total / limit),
-              1
-            ),
-
+      totalPages: total === 0 ? 0 : Math.max(Math.ceil(total / limit), 1),
       hasNextPage,
-
-      hasPreviousPage:
-        Boolean(cursor) || page > 1,
-
-      nextCursor
+      hasPreviousPage: page > 1,
+      nextCursor: null
     }
   };
 
-  await setCache(
-    cacheKey,
-    result,
-    60
-  );
-
+  await setCache(cacheKey, result, 60);
   return result;
 };
 
-const getSingleStory = async (id) => {
+const getSingleStory = async (id, lang = "en") => {
   const story = await prisma.story.findUnique({
-    where: {
-      id
-    },
-
-    include: storyDetailInclude
+    where: { id },
+    include: getStoryDetailInclude(lang)
   });
 
   if (!story) {
-    throw new AppError(
-      "Story not found",
-      404
-    );
+    throw new AppError("Story not found", 404);
   }
 
   return story;

@@ -1,21 +1,25 @@
-import { useState } from "react";
 import { Link } from "react-router-dom";
 import { ArrowRight, Brain, Clock3, Sparkles, TrendingUp } from "lucide-react";
 
-import PaginationControls from "../components/PaginationControls";
 import StoryFeed from "../components/StoryFeed";
+import QuickBriefing from "../components/QuickBriefing";
 import { useStories } from "../hooks/useStories";
 
 function Home() {
-  const [page, setPage] = useState(1);
-  const { data, isLoading, isError, error } = useStories({
-    page,
+  const {
+    data,
+    isLoading,
+    isError,
+    error,
+    fetchNextPage,
+    hasNextPage,
+    isFetchingNextPage,
+  } = useStories({
     limit: 10,
     search: "",
   });
 
-  const stories = data?.stories ?? data?.items ?? [];
-  const pagination = data?.pagination;
+  const stories = data?.pages?.flatMap((page) => page.stories ?? page.items ?? []) ?? [];
 
   if (isError) {
     return (
@@ -24,7 +28,7 @@ function Home() {
           NewsLensAI
         </p>
         <h1 className="mt-3 text-2xl font-black tracking-tight text-slate-950 dark:text-white">
-          Your briefing couldn&apos;t load
+          Your briefing couldn't load
         </h1>
         <p className="mt-2 text-sm leading-6 text-slate-500 dark:text-slate-400">
           {error?.message || "Please try again in a moment."}
@@ -65,17 +69,18 @@ function Home() {
         </nav>
       </header>
 
+      <div className="mx-auto max-w-[720px]">
+        {stories.length > 0 && <QuickBriefing stories={stories} />}
+      </div>
+
       <StoryFeed
         stories={stories}
         loading={isLoading}
         emptyMessage="New stories will appear here as they are ingested and understood."
+        fetchNextPage={fetchNextPage}
+        hasNextPage={hasNextPage}
+        isFetchingNextPage={isFetchingNextPage}
       />
-
-      {pagination?.totalPages > 1 ? (
-        <div className="mt-8">
-          <PaginationControls page={pagination.page} totalPages={pagination.totalPages} onPageChange={setPage} />
-        </div>
-      ) : null}
     </div>
   );
 }

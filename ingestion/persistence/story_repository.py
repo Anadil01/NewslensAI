@@ -294,7 +294,7 @@ newsapi_source = {
 # Content Update
 # ---------------------------------------------------------
 
-def update_story_content(story_id, content):
+def update_story_content(story_id, content, image_url=None):
     connection = get_connection()
 
     try:
@@ -305,12 +305,14 @@ def update_story_content(story_id, content):
             UPDATE stories
             SET content = %s,
                 content_status = %s,
+                image_url = COALESCE(image_url, %s),
                 updated_at = %s
             WHERE id = %s
             """,
             (
                 content,
                 "FULL",
+                image_url,
                 datetime.now(timezone.utc),
                 story_id,
             )
@@ -322,5 +324,25 @@ def update_story_content(story_id, content):
         connection.rollback()
         raise
 
+    finally:
+        connection.close()
+
+
+def update_story_reading_time(story_id, reading_time_seconds):
+    connection = get_connection()
+    try:
+        cursor = connection.cursor()
+        cursor.execute(
+            """
+            UPDATE stories
+            SET reading_time_seconds = %s
+            WHERE id = %s
+            """,
+            (reading_time_seconds, story_id)
+        )
+        connection.commit()
+    except Exception:
+        connection.rollback()
+        raise
     finally:
         connection.close()

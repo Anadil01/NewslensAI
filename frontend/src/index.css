@@ -13,69 +13,48 @@
   --color-mint: #0f766e;
 }
 
-:root {
-  color: var(--color-ink);
-  background:
-    radial-gradient(circle at top left, rgba(245, 158, 11, 0.2), transparent 30%),
-    radial-gradient(circle at top right, rgba(15, 118, 110, 0.16), transparent 28%),
-    linear-gradient(180deg, #fbfaf6 0%, #f4f4ef 100%);
-  font-synthesis: none;
-  text-rendering: optimizeLegibility;
-  -webkit-font-smoothing: antialiased;
-  -moz-osx-font-smoothing: grayscale;
-  color-scheme: light;
-}
+@layer base {
+  :root {
+    color: var(--color-ink);
+    background:
+      radial-gradient(circle at top left, rgba(245, 158, 11, 0.2), transparent 30%),
+      radial-gradient(circle at top right, rgba(15, 118, 110, 0.16), transparent 28%),
+      linear-gradient(180deg, #fbfaf6 0%, #f4f4ef 100%);
+    font-synthesis: none;
+    text-rendering: optimizeLegibility;
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+    color-scheme: light;
+  }
 
-:root.dark {
-  color-scheme: dark;
-  color: #e5e7eb;
-  background:
-    radial-gradient(circle at top left, rgba(217, 119, 6, 0.18), transparent 30%),
-    radial-gradient(circle at top right, rgba(13, 148, 136, 0.16), transparent 28%),
-    linear-gradient(180deg, #020617 0%, #0f172a 100%);
-}
+  :root.dark {
+    color-scheme: dark;
+    color: #e5e7eb;
+    background:
+      radial-gradient(circle at top left, rgba(217, 119, 6, 0.18), transparent 30%),
+      radial-gradient(circle at top right, rgba(13, 148, 136, 0.16), transparent 28%),
+      linear-gradient(180deg, #020617 0%, #0f172a 100%);
+  }
 
-html,
-body,
-#root {
-  min-height: 100%;
-}
+  html,
+  body {
+    min-width: 320px;
+    min-height: 100vh;
+  }
 
-body {
-  margin: 0;
-  transition:
-    background-color 200ms ease,
-    color 200ms ease;
-}
+  #root {
+    min-height: 100vh;
+  }
 
-a {
-  color: inherit;
-}
+  body {
+    margin: 0;
+    background: transparent;
+    transition:
+      background-color 200ms ease,
+      color 200ms ease;
+  }
 
-button,
-input {
-  font: inherit;
-}
-
-::selection {
-  background: rgba(217, 119, 6, 0.18);
-}
-
-html {
-  min-width: 320px;
-  min-height: 100%;
-}
-
-body {
-  min-width: 320px;
-  min-height: 100vh;
-  margin: 0;
-  background: transparent;
-  transition:
-    background-color 200ms ease,
-    color 200ms ease;
-}
-
-#root {
-  min-height: 100vh;
+  ::selection {
+    background: rgba(217, 119, 6, 0.18);
+  }
 }

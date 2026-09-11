@@ -21,13 +21,14 @@ exports.replacePreferences = asyncHandler(async (req, res) => {
 });
 
 exports.getPersonalizedFeed = asyncHandler(async (req, res) => {
-  const result =
-    await personalizationService.getPersonalizedFeed({
-      userId: req.user,
-      page: req.query.page,
-      limit: req.query.limit,
-      mode: req.query.mode
-    });
+  const result = await personalizationService.getPersonalizedFeed({
+    userId: req.user,
+    page: req.query.page,
+    limit: req.query.limit,
+    mode: req.query.mode,
+    // Force lowercase
+    lang: (req.query.lang || "en").toLowerCase() 
+  });
 
   return ApiResponse.success(
     res,

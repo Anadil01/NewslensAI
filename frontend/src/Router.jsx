@@ -10,12 +10,11 @@ import Home from "./pages/Home";
 import Login from "./pages/Login";
 import Register from "./pages/Register";
 import Bookmarks from "./pages/Bookmarks";
-import Story from "./pages/Story";
 import Feed from "./pages/Feed";
 import Topics from "./pages/Topics";
 import Sources from "./pages/Sources";
 import Settings from "./pages/Settings";
-
+import StoryDetail from "./pages/StoryDetail";
 
 export const Router = createBrowserRouter([
   {
@@ -28,50 +27,38 @@ export const Router = createBrowserRouter([
             path: "/",
             element: <Home />,
           },
-
           {
             path: "/story/:id",
-            element: <Story />,
+            element: <StoryDetail />,
           },
-
           {
-            // The backend feed endpoint keys off `mode`, so all three
-            // routes render the same page with a different mode.
             path: "/for-you",
             element: <Feed mode="personalized" />,
           },
-
           {
             path: "/latest",
             element: <Feed mode="latest" />,
           },
-
           {
             path: "/trending",
             element: <Feed mode="trending" />,
           },
-
           {
             path: "/topics",
             element: <Topics />,
           },
-
           {
             path: "/sources",
             element: <Sources />,
           },
-
-
           {
             path: "/bookmarks",
             element: <Bookmarks />,
           },
-
           {
             path: "/settings",
             element: <Settings />,
           },
-
         ],
       },
     ],
@@ -87,7 +74,6 @@ export const Router = createBrowserRouter([
             path: "/login",
             element: <Login />,
           },
-
           {
             path: "/register",
             element: <Register />,

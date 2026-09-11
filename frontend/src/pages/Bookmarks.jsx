@@ -10,7 +10,7 @@ const Bookmarks = () => {
 
   // Disabled while signed out, so isPending stays true without a request;
   // the !user branch below renders first in that case.
-  const { data: stories = [], isPending } = useBookmarks();
+  const { data: stories = [], isPending, isError, error } = useBookmarks();
 
   return (
     <section className="space-y-8">
@@ -53,6 +53,17 @@ const Bookmarks = () => {
         </div>
       ) : isPending ? (
         <LoadingSpinner label="Loading bookmarks..." />
+      ) : isError ? (
+        <div className="rounded-[28px] border border-red-200 bg-white/80 p-10 text-center shadow-sm dark:border-red-500/20 dark:bg-slate-900/80">
+          <h2 className="text-2xl font-bold tracking-tight text-slate-950 dark:text-white">
+            Bookmarks unavailable
+          </h2>
+          <p className="mx-auto mt-3 max-w-xl text-slate-600 dark:text-slate-300">
+            {error?.response?.data?.message ||
+              error?.message ||
+              "We couldn't load your reading shelf. Please try again in a moment."}
+          </p>
+        </div>
       ) : stories.length === 0 ? (
         <div className="rounded-[28px] border border-dashed border-stroke bg-white/70 p-10 text-center shadow-sm dark:border-white/10 dark:bg-slate-900/70">
           <h2 className="text-2xl font-bold tracking-tight text-slate-950 dark:text-white">

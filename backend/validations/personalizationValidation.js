@@ -2,12 +2,11 @@ const { z } = require("zod");
 
 const personalizedFeedQuerySchema = z.object({
   page: z.coerce.number().int().min(1).default(1),
-
   limit: z.coerce.number().int().min(1).max(24).default(10),
-
   mode: z
     .enum(["personalized", "latest", "trending"])
-    .default("personalized")
+    .default("personalized"),
+  lang: z.string().trim().default("en") // Add lang support here
 });
 
 const preferencesSchema = z.object({

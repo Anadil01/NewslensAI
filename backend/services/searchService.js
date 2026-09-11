@@ -23,6 +23,7 @@ const indexStory = async (story) => {
       content: story.content,
       excerpt: story.excerpt,
       points: story.points,
+      readingTimeSeconds: story.readingTimeSeconds,
       publishedAt: story.publishedAt
     },
     refresh: "wait_for"
@@ -63,6 +64,7 @@ const bulkIndexStories = async () => {
       content: story.content,
       excerpt: story.excerpt,
       points: story.points,
+      readingTimeSeconds: story.readingTimeSeconds,
       publishedAt: story.publishedAt
     });
   }

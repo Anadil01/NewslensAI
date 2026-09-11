@@ -7,6 +7,32 @@ from bs4 import BeautifulSoup
 MIN_CONTENT_LENGTH = 1000
 
 
+def extract_image_from_soup(soup, base_url=""):
+    """Extract primary editorial image from OpenGraph, Twitter card, or schema tags."""
+    # 1. OpenGraph image
+    og_img = soup.find("meta", property="og:image") or soup.find("meta", attrs={"name": "og:image"})
+    if og_img and og_img.get("content"):
+        url = og_img["content"].strip()
+        if url.startswith("http"):
+            return url
+
+    # 2. Twitter Card image
+    tw_img = soup.find("meta", property="twitter:image") or soup.find("meta", attrs={"name": "twitter:image"})
+    if tw_img and tw_img.get("content"):
+        url = tw_img["content"].strip()
+        if url.startswith("http"):
+            return url
+
+    # 3. Main article figure image
+    article_tag = soup.find("article")
+    if article_tag:
+        img = article_tag.find("img", src=True)
+        if img and img.get("src") and img["src"].startswith("http"):
+            return img["src"]
+
+    return None
+
+
 def extract_article_content(url):
     if not url:
         raise ValueError(
@@ -53,6 +79,9 @@ def extract_article_content(url):
         response.text,
         "html.parser"
     )
+
+    # (Optional) We can extract the image here if we need to return it
+    # image_url = extract_image_from_soup(soup, url)
 
     # --------------------------------
     # Remove obvious non-content

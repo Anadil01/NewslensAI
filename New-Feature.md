@@ -458,9 +458,9 @@ Logging
 Rate limiting
 API validation
 Security
-CI/CD
-Docker
-Deployment
+
+
+
 Final Product
 After all phases, the experience becomes:
                     NEWSLENSAI

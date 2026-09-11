@@ -16,14 +16,12 @@ import { queryKeys } from "../api/queryKeys";
  */
 export const useStory = (id) => {
   return useQuery({
-    queryKey: queryKeys.stories.detail(id),
-
+    queryKey: ["story", id],
     queryFn: async () => {
       const { data } = await API.get(`/stories/${id}`);
-      return data;
+      return data?.data || data;
     },
-
-    enabled: Boolean(id)
+    enabled: Boolean(id),
   });
 };
 

@@ -41,14 +41,25 @@ function Settings() {
 
   const {
     data: preferences = [],
-    isLoading
+    isLoading: prefLoading,
+    isError: isPrefError,
+    error: prefError
   } = usePreferences({
     enabled: Boolean(user)
   });
 
-  const { data: sourcePreferences = [] } = useSourcePreferences({
+  const {
+    data: sourcePreferences = [],
+    isLoading: sourceLoading,
+    isError: isSourceError,
+    error: sourceError
+  } = useSourcePreferences({
     enabled: Boolean(user)
   });
+
+  const isLoading = prefLoading || sourceLoading;
+  const isError = isPrefError || isSourceError;
+  const error = prefError || sourceError;
 
   const replacePreferences = useReplacePreferences();
 
@@ -89,6 +100,28 @@ function Settings() {
 
   if (isLoading) {
     return <LoadingSpinner fullScreen />;
+  }
+
+  if (isError) {
+    return (
+      <div className="space-y-8">
+        <section className="relative overflow-hidden rounded-[32px] border border-red-200 bg-white/75 p-6 shadow-sm backdrop-blur-xl sm:p-8 lg:p-10 dark:border-red-500/20 dark:bg-slate-900/70">
+          <div className="relative max-w-3xl">
+            <p className="text-xs font-bold uppercase tracking-[0.2em] text-red-600 dark:text-red-400">
+              Settings unavailable
+            </p>
+            <h1 className="mt-2 text-3xl font-black tracking-tight text-slate-950 sm:text-4xl dark:text-white">
+              We couldn't load your preferences.
+            </h1>
+            <p className="mt-4 max-w-2xl text-base leading-7 text-slate-600 dark:text-slate-300">
+              {error?.response?.data?.message ||
+                error?.message ||
+                "Please try again in a moment."}
+            </p>
+          </div>
+        </section>
+      </div>
+    );
   }
 
   return (
