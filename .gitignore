@@ -10,3 +10,9 @@ ingestion/venv/
 *.db
 *.sqlite
 .DS_Store
+backend/node_modules/
+frontend/node_modules/
+ingestion/venv/
+*.db
+*.sqlite
+.DS_Store
