@@ -140,3 +140,329 @@ API - https://newsapi.org/docs
 
 Elastic Search - https://youtu.be/a4HBKEda_F8?si=QMl1-4Zv5AhB2tjE
 
+
+# design from requirements
+
+A user can: 
+- create an account
+- bookmark stories
+- read stories
+- have preferences
+- receive personalized news
+- interact with topics
+
+A story can:
+- come from a source
+- have an author
+- have a URL
+- belong to topics
+- belong to a cluster
+- have AI-generated information
+- have bias information
+- be bookmarked by many users
+- be read by many users
+
+A source can:
+- publish many stories
+- have a name
+- have a URL
+- have metadata
+- have a source type
+
+
+# NEWSLENS DATABASE — INITIAL DESIGN
+
+- User
+- Source
+- Story
+- Bookmark
+- ReadingHistory
+- Topic
+- StoryTopic
+- StoryCluster
+- AISummary
+- BiasRating
+- UserPreference
+
+# relationships:
+
+- User 1 → many Bookmark
+- Story 1 → many Bookmark
+
+- User 1 → many ReadingHistory
+- Story 1 → many ReadingHistory
+
+- Source 1 → many Story
+
+- Story many ↔ many Topic
+- through StoryTopic
+
+- StoryCluster 1 → many Story
+
+- User 1 → many UserPreference
+
+
+# AI pipeline
+
+┌─────────────────────────────────────────┐
+│ OpenAI releases a new model             │
+│ Reuters • 2 hours ago                   │
+├─────────────────────────────────────────┤
+│                                         │
+│ AI SUMMARY                              │
+│ ─────────────────────────────────────── │
+│ 5 key points...                         │
+│                                         │
+│ RELATED COVERAGE                        │
+│ BBC • TechCrunch • The Verge            │
+│                                         │
+├─────────────────────────────────────────┤
+│ ARTICLE                                 │
+│                                         │
+│ [Full permitted article content]        │
+│                                         │
+├─────────────────────────────────────────┤
+│ SOURCE & BIAS                           │
+│ Reuters                                 │
+│ ...                                     │
+└─────────────────────────────────────────┘
+
+# relationship diagram
+
+                         ┌──────────────┐
+                         │     User     │
+                         └──────┬───────┘
+                                │
+               ┌────────────────┼─────────────────┐
+               │                │                 │
+               ▼                ▼                 ▼
+          Bookmark       ReadingHistory     UserPreference
+               │                │                 │
+               │                │                 ▼
+               │                │                Topic
+               │                │
+               ▼                ▼                 ▲
+          ┌─────────────────────────┐             │
+          │          Story          │─────────────┘
+          └───────────┬─────────────┘
+                      │
+           ┌──────────┼─────────────┐
+           │          │             │
+           ▼          ▼             ▼
+        Source     Cluster       AISummary
+                      │
+                      ▼
+                    Story
+
+Story * ─────── * Topic
+        StoryTopic
+
+
+# Final database blueprint
+
+┌──────────────────────────────────────────────┐
+│                    USERS                     │
+├──────────────────────────────────────────────┤
+│ id                                           │
+│ name                                         │
+│ email                                        │
+│ password_hash                                │
+│ created_at                                   │
+│ updated_at                                   │
+└──────────────────────┬───────────────────────┘
+                       │
+        ┌──────────────┼───────────────┐
+        │              │               │
+        ▼              ▼               ▼
+   BOOKMARKS     READING_HISTORY   USER_PREFERENCES
+        │              │               │
+        └──────┬───────┘               ▼
+               │                     TOPICS
+               ▼                       ▲
+             STORIES ───── STORY_TOPICS┘
+               │
+        ┌──────┼─────────┐
+        │      │         │
+        ▼      ▼         ▼
+     SOURCES CLUSTERS  AI_SUMMARIES
+
+
+# Why PostgreSQL?
+
+You already know the basics of PostgreSQL, so let's focus on why we're choosing it for NewsLens.
+Our application now needs relationships such as:
+
+1. Understand existing project             ✅
+2. Architecture foundation                 ✅
+3. Configuration                           ✅
+4. Centralized error handling              ✅
+5. Controller cleanup                      ✅
+6. Request validation                      ✅
+7. Authentication/security hardening       ✅
+8. API response standardization            ✅
+9. Service layer / business logic          ✅
+10. Database redesign                      ✅
+11. PostgreSQL                             ✅
+12. Prisma                                 ✅
+13. Database indexes/query optimization    ✅
+14. Redis                                  ✅
+15. Search / Elasticsearch                 ✅
+16. Scraping architecture                  ✅
+17. Background jobs / queues               ⏳
+18. AI pipeline                            🟡
+19. Personalization                        ⏳
+20. Story clustering                       ⏳
+21. Bias system                            ⏳
+22. Caching                                ⏳
+23. Security hardening                     ⏳
+24. Logging / monitoring                   ⏳
+25. Testing                                ⏳
+26. Docker                                 ⏳
+27. AWS deployment                         ⏳
+28. Production optimization                ⏳
+29. Final frontend improvements            ⏳
+
+
+
+                    ┌──────────────┐
+                    │   Frontend   │
+                    └──────┬───────┘
+                           │
+                           ▼
+                    ┌──────────────┐
+                    │    Express   │
+                    │     API      │
+                    └──────┬───────┘
+                           │
+              ┌────────────┴────────────┐
+              ▼                         ▼
+       ┌──────────────┐          ┌──────────────┐
+       │    Redis     │          │  PostgreSQL  │
+       │              │          │              │
+       │ Fast / cache │          │ Source truth │
+       └──────────────┘          └──────────────┘
+    
+# PostgreSQL- 
+- "I permanently own the data."
+
+# Redis-
+- I temporarily keep frequently needed data so we don't repeatedly ask PostgreSQL or external services.
+
+- Why NewsLens needs Redis :-
+  Consider this endpoint:
+   GET /api/stories
+ Suppose 1,000 users open NewsLens.
+ Without caching:
+ 1000 requests
+      ↓
+1000 PostgreSQL queries
+      ↓
+1000 responses
+With Redis:
+1000 requests
+      ↓
+Redis
+      ↓
+999 requests → cache
+      │
+      └── 1 request → PostgreSQL
+Conceptually:
+Request
+   │
+   ▼
+Redis
+   │
+   ├── HIT ──► return cached stories
+   │
+   └── MISS
+          │
+          ▼
+      PostgreSQL
+          │
+          ▼
+       Redis
+          │
+          ▼
+       Response
+This is called cache-aside or lazy caching.
+
+
+Why port 6379?
+6379 is Redis's default port.
+
+
+
+
+Q1 - How do you handle errors in Express?" 
+# "I use centralized error-handling middleware instead of handling responses independently in every controller. Controllers or services pass errors to Express using next(error), and the centralized middleware determines the appropriate HTTP status and response. I also distinguish expected operational errors from unexpected system errors and avoid exposing internal details in production."
+
+
+Created:
+backend/utils/asyncHandler.js
+
+Purpose:
+Catch rejected promises from async controllers
+and pass errors to Express using next(error).
+
+
+# Never trust data coming from the client. -- A client can send anything.
+
+# Elasticsearch-
+
+                  ┌──────────────┐
+                  │ PostgreSQL   │
+                  │ Source Truth │
+                  └──────┬───────┘
+                         │
+                         │ sync
+                         ▼
+                  ┌──────────────┐
+                  │ Elasticsearch│
+                  │ Search Index │
+                  └──────┬───────┘
+                         │
+                         ▼
+                    Search API
+
+
+"PostgreSQL is our source-of-truth relational database, while Elasticsearch maintains a denormalized search index optimized for full-text search and relevance ranking."
+
+
+Search request flow
+
+GET /api/stories/search?q=react
+                │
+                ▼
+        Search Controller
+                │
+                ▼
+         Search Service
+                │
+                ▼
+        Elasticsearch
+                │
+                ▼
+       ranked story IDs
+                │
+                ▼
+          PostgreSQL
+                │
+                ▼
+        complete stories
+                │
+                ▼
+             Redis
+                │
+                ▼
+            Response
+
+
+
+                    NewsLens Backend
+                          │
+          ┌───────────────┼────────────────┐
+          ↓               ↓                ↓
+     PostgreSQL          Redis       Elasticsearch
+       Prisma            Cache           Search
+       Source           Speed          Full-text
+       Truth
