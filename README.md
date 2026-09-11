@@ -1,303 +1,234 @@
 # NewsLensAI
 
-A news intelligence platform. It ingests articles from multiple sources, enriches them with
-an AI pipeline (summarization, topic classification, embedding-based story clustering, bias
-signals), and serves a personalized, explainable feed over cached REST APIs.
+<div align="center">
 
-The distinguishing idea is **story clustering**: rather than presenting a flat list of
-headlines, articles covering the same event are grouped, so the same story can be read
-across outlets with differing perspectives.
+![Node.js](https://img.shields.io/badge/Node.js-5FA04E?style=for-the-badge&logo=nodedotjs&logoColor=white)
+![Express.js](https://img.shields.io/badge/Express.js-000000?style=for-the-badge&logo=express&logoColor=white)
+![Python](https://img.shields.io/badge/Python_3.11+-3776AB?style=for-the-badge&logo=python&logoColor=white)
+![React](https://img.shields.io/badge/React_19-20232A?style=for-the-badge&logo=react&logoColor=61DAFB)
+![Vite](https://img.shields.io/badge/Vite_8-646CFF?style=for-the-badge&logo=vite&logoColor=white)
+![Tailwind CSS](https://img.shields.io/badge/Tailwind_CSS_v4-06B6D4?style=for-the-badge&logo=tailwindcss&logoColor=white)
+<br />
+![PostgreSQL](https://img.shields.io/badge/PostgreSQL-4169E1?style=for-the-badge&logo=postgresql&logoColor=white)
+![Prisma](https://img.shields.io/badge/Prisma_7-2D3748?style=for-the-badge&logo=prisma&logoColor=white)
+![Redis](https://img.shields.io/badge/Redis-DC382D?style=for-the-badge&logo=redis&logoColor=white)
+![OpenSearch](https://img.shields.io/badge/OpenSearch-005EB8?style=for-the-badge&logo=opensearch&logoColor=white)
+![Docker](https://img.shields.io/badge/Docker-2496ED?style=for-the-badge&logo=docker&logoColor=white)
+![Render](https://img.shields.io/badge/Render-46E3B7?style=for-the-badge&logo=render&logoColor=black)
+![Vercel](https://img.shields.io/badge/Vercel-000000?style=for-the-badge&logo=vercel&logoColor=white)
 
-> **Current status:** NewsLensAI is now a full-stack project with an implemented
-> Node.js/Express backend, Python ingestion and AI pipeline, and React/Vite frontend.
-> Backend and ingestion are the active integration focus; the frontend has completed
-> API-response, TanStack Query, and authentication/session alignment, with several
-> product surfaces still in progress. A Dockerfile packages the backend and ingestion
-> services, while CI/CD and external deployment configuration remain out of scope.
-> See [`frontend/readme.md`](frontend/readme.md) for frontend progress,
-> [`METRICS.md`](METRICS.md) for the benchmarking plan, and
-> [`UpGradeProject.md`](UpGradeProject.md) for the upgrade roadmap.
+<p align="center">
+  <strong>An AI-powered news intelligence and multi-perspective story clustering platform.</strong>
+</p>
+
+</div>
 
 ---
 
-## Architecture
+NewsLensAI ingests news articles across multiple external sources, enriches them through an asynchronous AI pipeline (summarization, structured entity extraction, topic classification, embedding-based story clustering, and bias signals), and serves an explainable, personalized briefing over low-latency REST APIs.
 
-```
-Sources (Hacker News · NewsAPI · RSS)
-        ↓
-Python ingestion — registry + orchestrator, per-source failure isolation
-        ↓
-Normalize → validate → deduplicate
-        ↓
-PostgreSQL (Prisma schema + migrations)
-        ↓
-AI enrichment
-   ├── content extraction
-   ├── summarization (Gemini default · OpenRouter supported)
-   ├── topic classification
-   ├── embeddings → story clustering
-   └── bias / tone signals
-        ↓
-Node.js API — stories, clusters, personalization
-        ↓
-Redis cache  +  Elasticsearch full-text search
-        ↓
-React frontend (API integration complete; feature completion in progress)
-```
+The core differentiator is **story clustering**: rather than presenting a disjointed list of duplicate headlines, articles covering the same event are grouped into connected clusters. Readers can evaluate coverage of identical events across competing outlets with transparent bias and reliability signals.
 
-Ingestion runs as a separate Python service because scraping and AI enrichment are
-asynchronous background workloads. Keeping them off the request path means a slow
-external API or a failing scraper cannot degrade user-facing responses. BullMQ and Redis
-carry the job handoff between the two.
+> **Status:** Full-stack operational. The backend API, queue worker, and Python AI pipeline are containerized via a single hybrid Docker container running on **Render**. Primary relational storage is provisioned via **Neon PostgreSQL**, real-time caching and task orchestration via **Redis Cloud (BullMQ)**, search indexing via **Bonsai OpenSearch**, and the client single-page application is hosted on **Vercel**.
 
-## Tech stack
+---
 
-**Backend** — Node.js, Express 5, PostgreSQL, Prisma 7, Redis (ioredis), BullMQ,
-Elasticsearch, JWT, bcrypt, Helmet, express-rate-limit, Zod. Tests run on the built-in
-`node --test` runner with supertest for route-level coverage.
+## Architecture Overview
 
-**Ingestion** — Python 3.9+, BeautifulSoup, requests, feed parsing, sentence-transformers
-for embeddings, OpenAI-compatible clients for Gemini (default) and OpenRouter, and
-psycopg2. Tests run on pytest.
+Sources (Hacker News · NewsAPI · RSS Feeds)
+│
+▼
+Python Ingestion & Processing
+(Source Orchestrator · Failure Isolation · Rate Pacing)
+│
+▼
+Normalize → Validate → Deduplicate
+│
+▼
+PostgreSQL (Prisma 7 Schema & Relations)
+│
+▼
+AI Enrichment Pipeline
+├── Content Extraction & Parsing
+├── LLM Summarization & Entity Extraction (Gemini / OpenRouter)
+├── Topic Classification
+├── Vector Embeddings → Story Clustering
+└── Source Bias & Perspective Analysis
+│
+▼
+Node.js / Express API
+├── Explainable Personalization & Recommendation Engine
+├── Background Queue Processing (BullMQ + node-cron)
+└── Synchronized Search Indexing
+│                     │
+▼                     ▼
+Redis Cloud Cache    OpenSearch / Bonsai
+│                     │
+└──────────┬──────────┘
+▼
+React 19 Frontend (Vite)
+(TanStack Query · Tailwind CSS 4 · AppShell UI)
 
-**Frontend** — React 19, React Router 7, Axios, TanStack Query, Context API,
-Tailwind CSS 4, and Vite 8.
 
-## Repository layout
+Ingestion runs as an isolated background workload to keep scraping overhead, external API timeouts, and heavy LLM extraction from blocking the web request path. Job handoff and scheduling are driven by **BullMQ**, automated background **node-cron** intervals, and direct queue workers.
 
-```
-backend/           Express API, services, recommendation engine, Prisma schema, workers
-  recommendation/  ranking engine (signals, affinity, penalties, scoring, diversification)
-  tests/           unit + route tests
-ingestion/         Python ingestion + AI pipeline
-  config/sources/  source registry and per-source adapters
-  tests/           automated pytest suite
-  scripts/         manual verification scripts (see note below)
-frontend/          React client; API integration complete, feature work in progress
-Dockerfile         backend + ingestion container image
-METRICS.md         benchmarking plan
-UpGradeProject.md  upgrade roadmap and planned product work
-```
+---
 
-## Getting started
+## Tech Stack
 
-### Prerequisites
+| Domain | Technologies |
+|---|---|
+| **API & Backend** | Node.js 22, Express 5, Prisma ORM 7, BullMQ, `node-cron`, JWT, bcrypt, Helmet, Zod |
+| **Search & Caching** | OpenSearch (`@opensearch-project/opensearch`), Redis Cloud (`ioredis` with `noeviction`) |
+| **Ingestion & AI** | Python 3.11+, BeautifulSoup4, Requests, Sentence-Transformers, Google Gemini API / OpenRouter |
+| **Database** | PostgreSQL (Neon serverless) |
+| **Frontend** | React 19, Vite 8, React Router 7, TanStack Query, Tailwind CSS 4, Axios, Lucide Icons |
+| **Infrastructure** | Root Dockerfile (`node:22-bookworm`), Render (API & Worker), Vercel (SPA) |
 
-PostgreSQL, Redis, and Elasticsearch running locally; Node.js 18+; Python 3.9+.
+---
 
-### 1. Backend
+## Repository Structure
+
+├── backend/
+│   ├── config/              # Environment schema & validation
+│   ├── controllers/         # Request handling logic
+│   ├── middleware/          # Auth, CORS, rate limits, error boundary
+│   ├── prisma/              # Schema definitions and SQL migrations
+│   ├── queues/              # BullMQ queue definitions and Redis connections
+│   ├── recommendation/      # Behavioral ranking & diversification engine
+│   ├── routes/              # Versioned API routes
+│   ├── services/            # Database transactions, search & cache services
+│   ├── utils/               # Prisma, Redis, and OpenSearch singletons
+│   └── workers/             # Ingestion queue execution processes
+├── frontend/
+│   ├── src/
+│   │   ├── api/             # Axios instance & React Query hooks
+│   │   ├── components/      # UI components, cards, navigation shells
+│   │   ├── context/         # Auth, theme, and application state
+│   │   ├── pages/           # Feed, Clusters, Bookmarks, Topics, Settings
+│   │   └── Router.jsx       # Client routing definitions
+├── ingestion/
+│   ├── ai/                  # LLM providers (Gemini, OpenRouter) & prompt routers
+│   ├── clustering/          # Embedding generation & cosine grouping
+│   ├── config/sources/      # Source registries & scrapers (HN, RSS, NewsAPI)
+│   ├── persistence/         # Direct database repositories
+│   └── run_pipeline.py      # Main pipeline entrypoint
+├── Dockerfile               # Production multi-runtime image (Node + Python)
+├── METRICS.md               # Pipeline benchmarks and performance profiling
+└── UpGradeProject.md        # Feature roadmap and tracking
+
+
+---
+
+## Getting Started
+
+### Local Prerequisites
+- Node.js `20.x` or `22.x`
+- Python `3.11+`
+- Local or managed instances of **PostgreSQL**, **Redis**, and **OpenSearch / Elasticsearch**
+
+### 1. Backend Setup
 
 ```bash
 cd backend
 npm install
-cp .env.example .env      # then fill in the values below
+cp .env.example .env
+
+# Run database migrations and generate Prisma client
 npx prisma migrate deploy
 npx prisma generate
+
+# Seed OpenSearch stories index
+node scripts/indexStories.js
+
 npm run dev
-```
 
-### 2. Ingestion
+2. Ingestion Engine Setup
 
-```bash
 cd ingestion
 python3 -m venv venv
-./venv/bin/pip install -r requirements.txt
-./venv/bin/python run_pipeline.py
-```
+source venv/bin/activate
+pip install -r requirements.txt
 
-The ingestion service reads its configuration from `backend/.env`, so there is a single
-env file for the whole system.
+# Run an initial manual ingestion pass
+python run_pipeline.py
 
-### 3. Frontend
+3. Frontend Setup
 
-```bash
 cd frontend
 npm install
 npm run dev
-```
 
-## Environment variables
+Environment Variables
 
-Backend, in `backend/.env`:
+Backend Configuration (backend/.env)
 
-```env
-NODE_ENV=development
+NODE_ENV=production
 PORT=5001
 
-DATABASE_URL=postgresql://user:password@localhost:5432/newslens
+# Primary Database
+DATABASE_URL="postgresql://<user>:<password>@<neon-host>/<db>?sslmode=require"
 
-# Required at boot. Must be at least 32 characters.
-JWT_SECRET=
-JWT_ISSUER=newslens-api
-JWT_AUDIENCE=newslens-web
-JWT_EXPIRES_IN=7d
+# Cache and Task Queues (Redis Cloud instance must have `noeviction` configured)
+REDIS_URL="rediss://:<password>@<redis-cloud-host>:<port>"
+
+# Search Engine (Bonsai or OpenSearch compatible)
+ELASTICSEARCH_URL="https://<user>:<password>@<bonsai-host>.bonsaisearch.net"
+
+# Client CORS Configuration
+CLIENT_URL="[https://newslens-ai-gamma.vercel.app](https://newslens-ai-gamma.vercel.app)"
+
+# Security & Tokens
+JWT_SECRET="generate-a-secure-random-32-character-secret"
+JWT_ISSUER="newslens-api"
+JWT_AUDIENCE="newslens-web"
+JWT_EXPIRES_IN="7d"
 BCRYPT_ROUNDS=12
 
-# Required at boot. Must be a redis:// or rediss:// URL.
-REDIS_URL=redis://localhost:6379
+# AI Ingestion Pipeline Configuration
+AI_PROVIDER="gemini"                   # Options: gemini | openrouter
+GEMINI_API_KEY="your-api-key"
+GEMINI_MODEL="gemini-2.5-flash"
+NEWS_API_KEY="your-newsapi-key"
+OPENROUTER_API_KEY="optional-openrouter-key"
 
-ELASTICSEARCH_URL=http://localhost:9200
-CLIENT_URL=http://localhost:5173
+# Path to Python Virtual Environment (used by the queue runner)
+PYTHON_BIN="/app/ingestion/venv/bin/python3"
 
-# Used by the ingestion service
-AI_PROVIDER=gemini                 # gemini (default) or openrouter
-GEMINI_API_KEY=
-GEMINI_MODEL=gemini-3.6-flash
-NEWS_API_KEY=
-OPENROUTER_API_KEY=
+Frontend Configuration (frontend/.env)
 
-# Interpreter the backend uses to invoke the Python pipeline
-PYTHON_BIN=
-```
+VITE_API_URL="[https://newslensai-backend.onrender.com/api](https://newslensai-backend.onrender.com/api)"
 
-`config/env.js` validates `JWT_SECRET`, `REDIS_URL`, and `BCRYPT_ROUNDS` at startup and
-refuses to boot on bad values, so misconfiguration fails immediately rather than at first
-request. `NEWS_API_KEY` is validated lazily, which means a Hacker-News-only or
-summarization-only run works without a NewsAPI key.
 
-Frontend, in `frontend/.env`:
+## Recommendation & Ranking Engine
 
-```env
-VITE_API_URL=http://localhost:5001/api
-```
+The feed ranking engine located at `backend/recommendation/` rejects static chronological sorts in favor of a weighted behavioral heuristic:
 
-## API
+| **Module**     | **Functionality**                                                                                                     |
+| -------------- | --------------------------------------------------------------------------------------------------------------------- |
+| `signals.js`   | Parses dwell time, completion ratios, skips, and bookmarks; applies exponential time-decay to historical engagements. |
+| `affinity.js`  | Calculates affinity matrices across topics and publisher sources based on direct preferences and implicit clicks.     |
+| `quality.js`   | Injects publisher credibility weighting and foundational scoring.                                                     |
+| `penalties.js` | Progressively demotes consumed articles (recovering over time) while heavily penalizing explicit skips and dislikes.  |
+| `normalize.js` | Normalizes recency, popularity thresholds, and cold-start fallback parameters.                                        |
+| `score.js`     | Generates final hybrid composite scores alongside transparency metadata.                                              |
+| `diversify.js` | Enforces cluster capping to prevent high-volume stories from flooding user feeds.                                     |
 
-All application routes are under `/api` and behind a global rate limiter. Everything
-except registration, login, `GET /api/topics`, and `/health` requires a JWT.
+## Deployment Workflow
 
-**Auth**
+### Backend & Ingestion (Render Web Service)
 
-```
-POST   /api/auth/register
-POST   /api/auth/login
-```
+1. Hosted as a **Docker Web Service** using the root `Dockerfile`.
+2. Debian Bookworm base guarantees support for both Node.js runtime and Python venv libraries.
+3. Automated ingestion triggers run immediately upon boot and continue every 30 minutes via `node-cron` without requiring external scheduler endpoints.
 
-**Stories, search, bookmarks**
+### Frontend (Vercel)
 
-```
-GET    /api/stories
-GET    /api/stories/:id
-GET    /api/stories/search
-POST   /api/stories/:id/bookmark
-GET    /api/bookmarks
-POST   /api/admin/ingestion/run        # admin only
-```
+1. Root directory configured to `frontend`.
+2. Framework preset: **Vite**.
+3. Output directory: `dist`.
+4. Production environment variables configured to point `VITE_API_URL` to the Render backend domain.
 
-**Story clusters** — the multi-source view
+## License
 
-```
-GET    /api/clusters
-GET    /api/clusters/:id
-GET    /api/stories/:id/related
-```
-
-**Personalization**
-
-```
-GET    /api/feed/personalized          # modes: personalized | latest | trending
-GET    /api/me/preferences
-PUT    /api/me/preferences
-POST   /api/stories/:id/reading
-
-GET    /api/topics                     # public
-POST   /api/topics/:topicId/follow
-DELETE /api/topics/:topicId/follow
-
-POST   /api/stories/:id/feedback       # LIKE | DISLIKE
-GET    /api/stories/:id/feedback
-DELETE /api/stories/:id/feedback
-
-POST   /api/stories/:id/skip
-GET    /api/stories/:id/skip
-DELETE /api/stories/:id/skip
-
-GET    /api/me/source-preferences
-POST   /api/sources/:sourceId/follow
-DELETE /api/sources/:sourceId/follow
-```
-
-**Health**
-
-```
-GET    /health
-```
-
-## Recommendation engine
-
-`backend/recommendation/` ranks the personalized feed. It is not a popularity sort — it
-builds a user profile from behaviour and combines weighted signals:
-
-| Module | Responsibility |
-|--------|----------------|
-| `signals.js` | User profile from reads, feedback, skips, bookmarks; classifies reads (completed / long / short / bounce) with time decay |
-| `affinity.js` | Topic and source affinity — explicit preferences blended with behavioural signal |
-| `quality.js` | Source-level quality contribution |
-| `penalties.js` | Already-read suppression that recovers as the read ages; dislike and skip demotion |
-| `normalize.js` | Freshness and popularity normalization, with unknown-popularity fallback |
-| `score.js` | Weighted combination, cold-start blending by signal strength, deterministic tie-breaking |
-| `diversify.js` | Cluster capping so one story cluster cannot dominate the feed |
-| `weights.js` | Central tunable weights |
-
-Every ranked item carries an explainability breakdown — topic affinity, source affinity,
-popularity, and the applied penalty multiplier — rather than an opaque score. Cold start is
-handled by blending toward popularity when behavioural signal is weak.
-
-Feed modes: `personalized` runs the engine, `trending` applies popularity × recency with
-round-robin cluster diversification, `latest` orders by publication time.
-
-## Testing
-
-```bash
-cd backend    && npm test                        # 186 tests
-cd ingestion  && ./venv/bin/python -m pytest     # 6 tests
-```
-
-Both suites pass. Two caveats worth knowing:
-
-- Backend tests run against a **mocked Prisma client**. They verify ranking logic, route
-  wiring, and validation — not live PostgreSQL, Redis, or Elasticsearch behaviour.
-  DB-backed integration tests are the next testing milestone.
-- `ingestion/scripts/` contains files named `test_*.py` that are **manual verification
-  scripts, not automated tests** — several make live API calls or connect to a real
-  database at import time. `pytest.ini` scopes collection to `tests/` so they are never
-  picked up. Run one deliberately with, for example,
-  `./venv/bin/python -m scripts.test_newsapi`.
-
-## Adding a news source
-
-Sources are adapters registered in `ingestion/config/sources/registry.py`. Each one
-provides a scraper callable and a normalizer that converts the raw response into the common
-article schema, so the orchestrator and everything downstream stay source-agnostic. The
-registry validates required fields and rejects duplicate slugs at import time, and
-`enabled` gates whether a source actually runs.
-
-The orchestrator wraps each source execution independently: a timeout or parse error in one
-source is recorded and the run continues with the rest.
-
-Current coverage is 3 adapters — Hacker News, NewsAPI, and RSS. RSS is the multiplier for
-reaching broad source coverage, since adding feeds is configuration rather than new code.
-
-## Known gaps
-
-Honest accounting of what is not done, in rough priority order:
-
-- **Source bias data is unpopulated.** The schema has `SourcePoliticalLean` and
-  `reliabilityScore`, and the cluster API exposes them, but no AllSides / Ad Fontes ratings
-  have been ingested. This is the highest-value remaining work — it unlocks the product's
-  core differentiator and the plumbing already exists.
-- **No integration tests or CI.** No `.github/` workflows or coverage reporting.
-- **Deployment is not production-ready.** A Dockerfile packages the backend and ingestion
-  services, but there is no CI/CD, external platform configuration, or documented
-  multi-service deployment for PostgreSQL, Redis, Elasticsearch, and the frontend.
-- **AI pipeline has no durable per-stage state** or stage-level dead-letter policy.
-- **Source coverage is 3 adapters**, against a target of many more.
-- **Pagination is still offset-based in core endpoints.** Story, search, cluster, and feed
-  flows use page/skip or in-memory slicing; the API's `nextCursor` field is not yet a
-  complete cursor-pagination implementation.
-- **Observability is console logging only** — no structured logs, metrics backend, tracing,
-  or alerting.
-
-## Author
-
-Anadil
+Distributed under the MIT License.
