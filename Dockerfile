@@ -16,7 +16,7 @@ RUN python3 -m venv /app/ingestion/venv && \
 
 # 4. Copy project code and generate Prisma client
 COPY . .
-RUN cd backend && npx prisma generate
+RUN cd backend && DATABASE_URL="postgresql://dummy:dummy@dummy/dummy" npx prisma generate
 
 ENV NODE_ENV=production
 ENV PYTHON_BIN=/app/ingestion/venv/bin/python3
