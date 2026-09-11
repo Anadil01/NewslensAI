@@ -25,210 +25,397 @@
 
 ---
 
-NewsLensAI ingests news articles across multiple external sources, enriches them through an asynchronous AI pipeline (summarization, structured entity extraction, topic classification, embedding-based story clustering, and bias signals), and serves an explainable, personalized briefing over low-latency REST APIs.
+**An AI-powered personalized news intelligence platform**
 
-The core differentiator is **story clustering**: rather than presenting a disjointed list of duplicate headlines, articles covering the same event are grouped into connected clusters. Readers can evaluate coverage of identical events across competing outlets with transparent bias and reliability signals.
+Ingests stories from Hacker News, NewsAPI, and RSS feeds, enriches them
+with LLMs and embeddings, clusters related coverage, and delivers a
+personalized, diversified feed.
+:::
 
-> **Status:** Full-stack operational. The backend API, queue worker, and Python AI pipeline are containerized via a single hybrid Docker container running on **Render**. Primary relational storage is provisioned via **Neon PostgreSQL**, real-time caching and task orchestration via **Redis Cloud (BullMQ)**, search indexing via **Bonsai OpenSearch**, and the client single-page application is hosted on **Vercel**.
+------------------------------------------------------------------------
 
----
+## ✨ What it does
 
-## Architecture Overview
+NewsLensAI is built around a simple pipeline:
 
-Sources (Hacker News · NewsAPI · RSS Feeds)
-│
-▼
-Python Ingestion & Processing
-(Source Orchestrator · Failure Isolation · Rate Pacing)
-│
-▼
-Normalize → Validate → Deduplicate
-│
-▼
-PostgreSQL (Prisma 7 Schema & Relations)
-│
-▼
-AI Enrichment Pipeline
-├── Content Extraction & Parsing
-├── LLM Summarization & Entity Extraction (Gemini / OpenRouter)
-├── Topic Classification
-├── Vector Embeddings → Story Clustering
-└── Source Bias & Perspective Analysis
-│
-▼
-Node.js / Express API
-├── Explainable Personalization & Recommendation Engine
-├── Background Queue Processing (BullMQ + node-cron)
-└── Synchronized Search Indexing
-│                     │
-▼                     ▼
-Redis Cloud Cache    OpenSearch / Bonsai
-│                     │
-└──────────┬──────────┘
-▼
-React 19 Frontend (Vite)
-(TanStack Query · Tailwind CSS 4 · AppShell UI)
+**Collect → Clean → Enrich → Cluster → Rank → Personalize → Search**
 
+It combines traditional backend services with an isolated Python
+ingestion/AI workload so expensive scraping, NLP, embeddings, and LLM
+operations do not block user-facing API requests.
 
-Ingestion runs as an isolated background workload to keep scraping overhead, external API timeouts, and heavy LLM extraction from blocking the web request path. Job handoff and scheduling are driven by **BullMQ**, automated background **node-cron** intervals, and direct queue workers.
+### Highlights
 
----
+-   📰 **Multi-source ingestion** --- Hacker News, NewsAPI, and RSS
+    feeds
+-   🤖 **AI enrichment** --- content extraction, summarization, entity
+    extraction, and topic classification
+-   🧠 **Semantic clustering** --- vector embeddings group stories
+    covering the same event
+-   🎯 **Behavioral recommendations** --- ranking adapts to reading
+    behavior and preferences
+-   ⚖️ **Feed diversification** --- cluster caps prevent one story from
+    dominating the feed
+-   🔎 **Fast search** --- OpenSearch indexing with Redis-backed caching
+-   ⚙️ **Background processing** --- BullMQ + Redis Cloud + scheduled
+    workers
+-   🔐 **Production API** --- JWT authentication, validation, rate
+    limiting, CORS, and Helmet
+-   🚀 **Cloud deployment** --- Render for backend/ingestion and Vercel
+    for the React SPA
 
-## Tech Stack
+------------------------------------------------------------------------
 
-| Domain | Technologies |
-|---|---|
-| **API & Backend** | Node.js 22, Express 5, Prisma ORM 7, BullMQ, `node-cron`, JWT, bcrypt, Helmet, Zod |
-| **Search & Caching** | OpenSearch (`@opensearch-project/opensearch`), Redis Cloud (`ioredis` with `noeviction`) |
-| **Ingestion & AI** | Python 3.11+, BeautifulSoup4, Requests, Sentence-Transformers, Google Gemini API / OpenRouter |
-| **Database** | PostgreSQL (Neon serverless) |
-| **Frontend** | React 19, Vite 8, React Router 7, TanStack Query, Tailwind CSS 4, Axios, Lucide Icons |
-| **Infrastructure** | Root Dockerfile (`node:22-bookworm`), Render (API & Worker), Vercel (SPA) |
+## 🏗️ Architecture
 
----
+``` mermaid
+flowchart TD
+    A[News Sources<br/>Hacker News · NewsAPI · RSS] --> B[Python Ingestion]
+    B --> C[Normalize · Validate · Deduplicate]
+    C --> D[(PostgreSQL)]
+    D --> E[AI Enrichment]
 
-## Repository Structure
+    E --> E1[Content Extraction]
+    E --> E2[LLM Summary + Entities]
+    E --> E3[Topic Classification]
+    E --> E4[Vector Embeddings]
 
+    E4 --> F[Story Clustering]
+    F --> G[Source Bias + Perspective Analysis]
+
+    G --> H[Node.js / Express API]
+    D --> H
+
+    H --> I[Recommendation Engine]
+    I --> I1[Behavior Signals]
+    I --> I2[Topic / Publisher Affinity]
+    I --> I3[Quality Weighting]
+    I --> I4[Penalties + Time Decay]
+    I --> I5[Diversification]
+
+    H --> J[OpenSearch]
+    H --> K[(Redis Cloud)]
+    K --> L[BullMQ Workers]
+
+    H --> M[React 19 Frontend]
+    M --> N[Feed · Clusters · Topics · Bookmarks · Settings]
+```
+
+### Runtime flow
+
+1.  **Sources** provide articles and stories.
+2.  **Python ingestion** fetches and normalizes content in the
+    background.
+3.  **PostgreSQL** stores the canonical application data.
+4.  **AI enrichment** extracts useful semantic information from each
+    story.
+5.  **Embeddings + clustering** identify related coverage.
+6.  **Node.js / Express** exposes the application API.
+7.  **Recommendation scoring** combines behavioral, quality, recency,
+    and affinity signals.
+8.  **OpenSearch + Redis** provide fast search and caching.
+9.  **React** consumes the API and renders the personalized experience.
+
+> Ingestion is deliberately isolated from the web request path. This
+> prevents scraping overhead, external API delays, and heavy AI
+> processing from degrading API response times.
+
+------------------------------------------------------------------------
+
+## 🎯 Recommendation & Ranking Engine
+
+The ranking engine in `backend/recommendation/` avoids a simple
+chronological feed and instead produces a weighted behavioral score.
+
+  -----------------------------------------------------------------------
+  Module                              Responsibility
+  ----------------------------------- -----------------------------------
+  `signals.js`                        Parses dwell time, completion
+                                      ratio, skips, and bookmarks;
+                                      applies exponential time decay
+
+  `affinity.js`                       Builds topic and publisher affinity
+                                      from explicit preferences and
+                                      implicit interactions
+
+  `quality.js`                        Adds publisher credibility and
+                                      foundational quality signals
+
+  `penalties.js`                      Demotes consumed stories over time
+                                      and strongly penalizes explicit
+                                      skips/dislikes
+
+  `normalize.js`                      Normalizes recency, popularity
+                                      thresholds, and cold-start
+                                      parameters
+
+  `score.js`                          Produces the final hybrid score
+                                      together with transparency metadata
+
+  `diversify.js`                      Caps clusters so repeated coverage
+                                      does not flood the feed
+  -----------------------------------------------------------------------
+
+### Ranking concept
+
+``` text
+User behavior
+     │
+     ├── Dwell time
+     ├── Completion
+     ├── Bookmarks
+     ├── Clicks
+     └── Skips / dislikes
+             │
+             ▼
+      Behavioral signals
+             │
+             ├── Topic affinity
+             ├── Publisher affinity
+             ├── Quality
+             ├── Recency
+             └── Consumption penalties
+             │
+             ▼
+       Hybrid score
+             │
+             ▼
+     Cluster diversification
+             │
+             ▼
+       Personalized feed
+```
+
+------------------------------------------------------------------------
+
+## 🧰 Tech Stack
+
+  -----------------------------------------------------------------------
+  Area                                Technologies
+  ----------------------------------- -----------------------------------
+  **API & Backend**                   Node.js 22, Express 5, Prisma ORM
+                                      7, BullMQ, `node-cron`, JWT,
+                                      bcrypt, Helmet, Zod
+
+  **Search & Caching**                OpenSearch, Redis Cloud, `ioredis`,
+                                      `node-caching`
+
+  **Ingestion & AI**                  Python 3.11+, BeautifulSoup4,
+                                      Requests, Sentence-Transformers,
+                                      Google Gemini API, OpenRouter
+
+  **Database**                        PostgreSQL (Neon serverless)
+
+  **Frontend**                        React 19, Vite, TanStack Query,
+                                      Tailwind CSS 4, AppShell UI
+
+  **Infrastructure**                  Docker, Debian Bookworm, Render,
+                                      Vercel
+  -----------------------------------------------------------------------
+
+------------------------------------------------------------------------
+
+## 📁 Repository Structure
+
+``` text
+NewslensAI/
 ├── backend/
-│   ├── config/              # Environment schema & validation
-│   ├── controllers/         # Request handling logic
-│   ├── middleware/          # Auth, CORS, rate limits, error boundary
-│   ├── prisma/              # Schema definitions and SQL migrations
-│   ├── queues/              # BullMQ queue definitions and Redis connections
-│   ├── recommendation/      # Behavioral ranking & diversification engine
-│   ├── routes/              # Versioned API routes
-│   ├── services/            # Database transactions, search & cache services
-│   ├── utils/               # Prisma, Redis, and OpenSearch singletons
-│   └── workers/             # Ingestion queue execution processes
+│   ├── config/             # Environment schema & validation
+│   ├── controllers/        # Request handling
+│   ├── middleware/         # Auth, CORS, rate limits, error boundary
+│   ├── prisma/             # Schema definitions & migrations
+│   ├── queues/             # BullMQ queue definitions & Redis connections
+│   ├── recommendation/     # Ranking & diversification engine
+│   ├── routes/             # Versioned API routes
+│   ├── services/           # Database, search & cache services
+│   ├── utils/              # Prisma, Redis & OpenSearch singletons
+│   └── workers/             # Ingestion queue workers
+│
 ├── frontend/
 │   ├── src/
-│   │   ├── api/             # Axios instance & React Query hooks
-│   │   ├── components/      # UI components, cards, navigation shells
-│   │   ├── context/         # Auth, theme, and application state
-│   │   ├── pages/           # Feed, Clusters, Bookmarks, Topics, Settings
-│   │   └── Router.jsx       # Client routing definitions
+│   │   ├── api/            # Axios + React Query hooks
+│   │   ├── components/     # UI components and cards
+│   │   ├── context/        # Auth, theme & application state
+│   │   ├── pages/          # Feed, Clusters, Bookmarks, Topics, Settings
+│   │   └── Router.jsx      # Client-side routing
+│
 ├── ingestion/
-│   ├── ai/                  # LLM providers (Gemini, OpenRouter) & prompt routers
-│   ├── clustering/          # Embedding generation & cosine grouping
-│   ├── config/sources/      # Source registries & scrapers (HN, RSS, NewsAPI)
-│   ├── persistence/         # Direct database repositories
-│   └── run_pipeline.py      # Main pipeline entrypoint
-├── Dockerfile               # Production multi-runtime image (Node + Python)
-├── METRICS.md               # Pipeline benchmarks and performance profiling
-└── UpGradeProject.md        # Feature roadmap and tracking
+│   ├── ai/                 # Gemini / OpenRouter providers
+│   ├── clustering/         # Embeddings & cosine grouping
+│   ├── config/sources/     # Source registries & scrapers
+│   ├── persistence/        # Direct database repositories
+│   └── run_pipeline.py     # Main pipeline entry point
+│
+├── Dockerfile              # Production multi-runtime image
+├── METRICS.md              # Pipeline benchmarks & profiling
+└── UpGradeProject.md       # Feature roadmap & tracking
+```
 
+------------------------------------------------------------------------
 
----
+## 🔄 Background Processing
 
-## Getting Started
+Background work is handled through **BullMQ**, **Redis Cloud**, and
+scheduled workers.
 
-### Local Prerequisites
-- Node.js `20.x` or `22.x`
-- Python `3.11+`
-- Local or managed instances of **PostgreSQL**, **Redis**, and **OpenSearch / Elasticsearch**
+-   Queue definitions live under `backend/queues/`
+-   Queue execution lives under `backend/workers/`
+-   `node-cron` triggers recurring ingestion jobs
+-   Heavy Python/AI work stays outside the synchronous API path
+-   Redis provides the queue/cache layer
+-   OpenSearch receives synchronized search indexes
 
-### 1. Backend Setup
+This separation makes the application easier to scale because API
+traffic and ingestion workloads can be handled independently.
 
-```bash
+------------------------------------------------------------------------
+
+## 🚀 Deployment
+
+### Backend & ingestion --- Render
+
+The backend is deployed as a Docker Web Service using the root
+`Dockerfile`.
+
+-   **Base:** Debian Bookworm
+-   **Runtime:** Node.js + Python virtual environment
+-   **API:** Express
+-   **Workers:** BullMQ / background ingestion
+-   **Scheduling:** `node-cron`
+-   **Database:** PostgreSQL / Neon
+-   **Cache & queues:** Redis Cloud
+
+The ingestion schedule runs automatically after startup and continues on
+the configured recurring interval.
+
+### Frontend --- Vercel
+
+The frontend is deployed separately as a Vite application.
+
+  Setting             Value
+  ------------------- ---------------------------------
+  Root directory      `frontend`
+  Framework           Vite
+  Build output        `dist`
+  API configuration   `VITE_API_URL` → Render backend
+
+------------------------------------------------------------------------
+
+## 🛠️ Getting Started
+
+### Prerequisites
+
+Install:
+
+-   Node.js **20.x or 22.x**
+-   Python **3.11+**
+-   PostgreSQL
+-   Redis
+-   OpenSearch / Elasticsearch-compatible search service
+
+### 1. Clone the repository
+
+``` bash
+git clone <your-repository-url>
+cd NewslensAI
+```
+
+### 2. Configure the backend
+
+Create the backend environment file required by the project's
+configuration schema, then provide your PostgreSQL, Redis, OpenSearch,
+authentication, and AI provider settings.
+
+``` bash
 cd backend
 npm install
-cp .env.example .env
+```
 
-# Run database migrations and generate Prisma client
-npx prisma migrate deploy
+### 3. Prepare the database
+
+Run the Prisma workflow required by your environment, for example:
+
+``` bash
 npx prisma generate
+npx prisma migrate dev
+```
 
-# Seed OpenSearch stories index
-node scripts/indexStories.js
+### 4. Install Python dependencies
 
-npm run dev
-
-2. Ingestion Engine Setup
-
-cd ingestion
-python3 -m venv venv
-source venv/bin/activate
+``` bash
+cd ../ingestion
+python -m venv .venv
+source .venv/bin/activate
 pip install -r requirements.txt
+```
 
-# Run an initial manual ingestion pass
-python run_pipeline.py
+### 5. Start the frontend
 
-3. Frontend Setup
-
-cd frontend
+``` bash
+cd ../frontend
 npm install
 npm run dev
+```
 
-Environment Variables
+> The exact environment variable names and production commands should
+> follow the project's `.env.example`, package scripts, and deployment
+> configuration.
 
-Backend Configuration (backend/.env)
+------------------------------------------------------------------------
 
-NODE_ENV=production
-PORT=5001
+## 📊 Performance & Observability
 
-# Primary Database
-DATABASE_URL="postgresql://<user>:<password>@<neon-host>/<db>?sslmode=require"
+Pipeline benchmarks and profiling notes are maintained in:
 
-# Cache and Task Queues (Redis Cloud instance must have `noeviction` configured)
-REDIS_URL="rediss://:<password>@<redis-cloud-host>:<port>"
+``` text
+METRICS.md
+```
 
-# Search Engine (Bonsai or OpenSearch compatible)
-ELASTICSEARCH_URL="https://<user>:<password>@<bonsai-host>.bonsaisearch.net"
+Use this document to track ingestion throughput, processing bottlenecks,
+and performance improvements as the pipeline evolves.
 
-# Client CORS Configuration
-CLIENT_URL="[https://newslens-ai-gamma.vercel.app](https://newslens-ai-gamma.vercel.app)"
+------------------------------------------------------------------------
 
-# Security & Tokens
-JWT_SECRET="generate-a-secure-random-32-character-secret"
-JWT_ISSUER="newslens-api"
-JWT_AUDIENCE="newslens-web"
-JWT_EXPIRES_IN="7d"
-BCRYPT_ROUNDS=12
+## 🧩 Design Principles
 
-# AI Ingestion Pipeline Configuration
-AI_PROVIDER="gemini"                   # Options: gemini | openrouter
-GEMINI_API_KEY="your-api-key"
-GEMINI_MODEL="gemini-2.5-flash"
-NEWS_API_KEY="your-newsapi-key"
-OPENROUTER_API_KEY="optional-openrouter-key"
+### 1. Personalization over chronology
 
-# Path to Python Virtual Environment (used by the queue runner)
-PYTHON_BIN="/app/ingestion/venv/bin/python3"
+The feed should reflect what a reader finds useful, not simply what was
+published most recently.
 
-Frontend Configuration (frontend/.env)
+### 2. Semantic understanding
 
-VITE_API_URL="[https://newslensai-backend.onrender.com/api](https://newslensai-backend.onrender.com/api)"
+Stories are enriched with topics, entities, summaries, and embeddings
+before recommendation decisions are made.
 
+### 3. Diversity by design
 
-## Recommendation & Ranking Engine
+Related stories are clustered and capped so the feed can represent
+multiple events and perspectives.
 
-The feed ranking engine located at `backend/recommendation/` rejects static chronological sorts in favor of a weighted behavioral heuristic:
+### 4. Explainable ranking
 
-| **Module**     | **Functionality**                                                                                                     |
-| -------------- | --------------------------------------------------------------------------------------------------------------------- |
-| `signals.js`   | Parses dwell time, completion ratios, skips, and bookmarks; applies exponential time-decay to historical engagements. |
-| `affinity.js`  | Calculates affinity matrices across topics and publisher sources based on direct preferences and implicit clicks.     |
-| `quality.js`   | Injects publisher credibility weighting and foundational scoring.                                                     |
-| `penalties.js` | Progressively demotes consumed articles (recovering over time) while heavily penalizing explicit skips and dislikes.  |
-| `normalize.js` | Normalizes recency, popularity thresholds, and cold-start fallback parameters.                                        |
-| `score.js`     | Generates final hybrid composite scores alongside transparency metadata.                                              |
-| `diversify.js` | Enforces cluster capping to prevent high-volume stories from flooding user feeds.                                     |
+The ranking pipeline keeps transparency metadata alongside composite
+scores, making recommendation behavior easier to inspect and improve.
 
-## Deployment Workflow
+### 5. Async-first ingestion
 
-### Backend & Ingestion (Render Web Service)
+Scraping, external APIs, embeddings, and LLM calls are isolated from
+user-facing request handling.
 
-1. Hosted as a **Docker Web Service** using the root `Dockerfile`.
-2. Debian Bookworm base guarantees support for both Node.js runtime and Python venv libraries.
-3. Automated ingestion triggers run immediately upon boot and continue every 30 minutes via `node-cron` without requiring external scheduler endpoints.
+------------------------------------------------------------------------
 
-### Frontend (Vercel)
+## 📌 Project Status
 
-1. Root directory configured to `frontend`.
-2. Framework preset: **Vite**.
-3. Output directory: `dist`.
-4. Production environment variables configured to point `VITE_API_URL` to the Render backend domain.
+NewsLensAI is an actively evolving project. The feature roadmap and
+ongoing improvements are tracked in:
 
-## License
+``` text
+UpGradeProject.md
+```
 
-Distributed under the MIT License.
+------------------------------------------------------------------------
+
+## 📄 License
+
+Distributed under the **MIT License**.
