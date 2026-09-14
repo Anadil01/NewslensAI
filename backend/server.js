@@ -1,7 +1,7 @@
 const config = require("./config/env");
 const app = require("./app");
 const cron = require("node-cron");
-const { ingestionQueue } = require("./queues/ingestionQueue");
+const ingestionQueue = require("./queues/ingestionQueue");
 
 const {
   connectRedis,
