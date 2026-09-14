@@ -278,9 +278,10 @@ function StoryCard({ story }) {
   };
 
   const handleBookmark = () => {
-    if (!isSignedIn) return;
-    toggleBookmark.mutate({ storyId: story.id, isBookmarked });
-  };
+  if (!isSignedIn) return;
+
+  toggleBookmark.mutate(story.id);
+};
 
   const handleSkip = () => {
     if (!isSignedIn) return;

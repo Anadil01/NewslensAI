@@ -1,6 +1,6 @@
 import {
   useMutation,
-  useQueryClient
+  useQueryClient,
 } from "@tanstack/react-query";
 
 import API from "../api/axios";
@@ -13,30 +13,37 @@ export const useToggleBookmark = () => {
 
   return useMutation({
     mutationFn: async (storyId) => {
+      if (!storyId || typeof storyId !== "string") {
+        throw new Error("Invalid story ID");
+      }
+
       const response = await API.post(
         `/stories/${storyId}/bookmark`
       );
 
-      // Payload shape: { bookmarked: boolean }
       return {
         ...response.data,
-        message: response.message
+        message: response.message,
       };
     },
+
     onSuccess: (result) => {
       toast.success(result.message || "Bookmark updated");
 
-      // The bookmarks list changed, so let it refetch instead of
-      // patching local state on every screen that shows a story.
+      // Refresh the bookmarks list.
       queryClient.invalidateQueries({
-        queryKey: queryKeys.bookmarks
+        queryKey: queryKeys.bookmarks,
       });
     },
+
     onError: (error) => {
       toast.error(
         error.response?.data?.message ||
+          error.message ||
           "Bookmark action failed."
       );
-    }
+    },
   });
 };
+
+export default useToggleBookmark;
